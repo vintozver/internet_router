@@ -1,3 +1,6 @@
 This is a single homed internet router
 
-Usage: internet-router <WAN interface> <LAN interface> <state_file>
+Usage: internet-router <WAN interface> <LAN interface> <storage_dir>
+
+Storage dir will contain DHCP, radvd files, current service state, control socket, dhclient script.
+dhclient script SHOULD be created by the user, MUST be executable file and SHOULD execute the dhclient script provided by this package.
