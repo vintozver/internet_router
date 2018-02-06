@@ -16,73 +16,105 @@ logging.basicConfig(level=logging.INFO)
 
 class Dispatcher(object):
     def __init__(self, wan_interface, lan_interface, state_dir):
+        self.comm_key = open('/dev/urandom', 'rb').read(128)
+        open(os.path.join(state_dir, 'comm_key'), 'wb').write(self.comm_key)
+
         self.wan_interface = wan_interface
         self.lan_interface = lan_interface
         self.state_dir = state_dir
 
         self.shutdown_event = Event()
 
+        # instance is thread safe
+        # lock is necessary, only once interface method may be running at the same time
         self.lock = Lock()
-        self.wan_dhcpv6_client_process = None  # DHCPv6 client on the WAN interface (process)
-        self.wan_dhcpv6_client_thread_stdout = None  # DHCPv6 client on the WAN interface (stdout thread poll)
-        self.wan_dhcpv6_client_thread_stderr = None  # DHCPv6 client on the WAN interface (stderr thread poll)
+
+        self.wan_dhclient6_process = None  # DHCPv6 client on the WAN interface (process)
+        self.wan_dhclient6_thread_stdout = None  # DHCPv6 client on the WAN interface (stdout thread poll)
+        self.wan_dhclient6_thread_stderr = None  # DHCPv6 client on the WAN interface (stderr thread poll)
         self.lan_radvd_process = None  # radvd on the LAN interface (process)
         self.lan_radvd_thread_stdout = None  # radvd on the LAN interface (stdout thread poll)
-        self.wan_dhcpv6_client_thread_stderr = None  # radvd on the LAN interface (stderr thread poll)
+        self.wan_dhclient6_thread_stderr = None  # radvd on the LAN interface (stderr thread poll)
 
     def add_interface(self, index, name):
         logging.info('Adding interface to the topology %d:%s' % (index, name))
 
-        if name == self.wan_interface:
-            self.start_wan_dhcpv6_client()
-        elif name == self.lan_interface:
-            self.start_lan_radvd()
-        else:
-            pass
+        with self.lock:
+            if name == self.wan_interface:
+                self.start_wan_dhclient6()
+            elif name == self.lan_interface:
+                self.start_lan_radvd()
+            else:
+                pass
 
     def remove_interface(self, index, name):
         logging.info('Trying to remove interface %d:%s' % (index, name))
 
-        if name == self.wan_interface:
-            self.stop_wan_dhcpv6_client()
-        elif name == self.lan_interface:
-            self.stop_lan_radvd()
+        with self.lock:
+            if name == self.wan_interface:
+                self.stop_wan_dhclient6()
+            elif name == self.lan_interface:
+                self.stop_lan_radvd()
 
-    def start_wan_dhcpv6_client(self):
-        if self.wan_dhcpv6_client_process is not None:
+    def start_wan_dhclient6(self):
+        if self.wan_dhclient6_process is not None:
             return
 
-        self.wan_dhcpv6_client_process = subprocess.Popen(
-            ['dhclient', '--no-pid', '-d', '-v', '-6', '-P', '-N', '-sf', '/bin/true', self.wan_interface],
+        logging.info('wan_dhclient6 starting ...')
+
+        logging.info('Creating wan_dhclient6_server thread')
+        from . import wan_dhclient6_server
+        self.wan_dhclient6_server = wan_dhclient6_server.CommandServer(self, os.path.join(self.state_dir, 'dhclient6_comm'))
+        self.wan_dhclient6_server_thread = Thread(target=self._server_thread, args=(self.wan_dhclient6_server, ))
+        self.wan_dhclient6_server_thread.start()
+
+        self.wan_dhclient6_process = subprocess.Popen(
+            [
+                'dhclient', '--no-pid', '-d', '-v', '-6', '-P', '-N',
+                '-sf', os.path.join(self.state_dir, 'dhclient6_script'),
+                self.wan_interface
+            ],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=os.environ
         )
-        self.wan_dhcpv6_client_thread_stdout = Thread(
+        self.wan_dhclient6_thread_stdout = Thread(
             target=self.std_stream_dup,
-            args=('WAN DHCPv6 client stdout: ', self.wan_dhcpv6_client_process.stdout),
-            name='WAN_DHCPv6_client_stdout',
+            args=('WAN DHCPv6 client stdout: ', self.wan_dhclient6_process.stdout),
+            name='WAN_dhclient6_stdout',
         )
-        self.wan_dhcpv6_client_thread_stdout.start()
-        self.wan_dhcpv6_client_thread_stderr = Thread(
+        self.wan_dhclient6_thread_stdout.start()
+        self.wan_dhclient6_thread_stderr = Thread(
             target=self.std_stream_dup,
-            args=('WAN DHCPv6 client stderr: ', self.wan_dhcpv6_client_process.stderr),
-            name='WAN_DHCPv6_client_stderr',
+            args=('WAN DHCPv6 client stderr: ', self.wan_dhclient6_process.stderr),
+            name='WAN_dhclient6_stderr',
         )
-        self.wan_dhcpv6_client_thread_stderr.start()
+        self.wan_dhclient6_thread_stderr.start()
 
-    def stop_wan_dhcpv6_client(self):
-        if self.wan_dhcpv6_client_process is None:
+        logging.info('wan_dhclient6 started')
+
+    def stop_wan_dhclient6(self):
+        if self.wan_dhclient6_process is None:
             return
 
-        self.wan_dhcpv6_client_process.send_signal(signal.SIGTERM)
-        self.wan_dhcpv6_client_thread_stdout.join()
-        self.wan_dhcpv6_client_thread_stdout = None
-        self.wan_dhcpv6_client_thread_stderr.join()
-        self.wan_dhcpv6_client_thread_stderr = None
-        self.wan_dhcpv6_client_process.wait()
-        self.wan_dhcpv6_client_process = None
+        logging.info('wan_dhclient6 stopping ...')
+
+        self.wan_dhclient6_process.send_signal(signal.SIGTERM)
+        self.wan_dhclient6_thread_stdout.join()
+        self.wan_dhclient6_thread_stdout = None
+        self.wan_dhclient6_thread_stderr.join()
+        self.wan_dhclient6_thread_stderr = None
+        self.wan_dhclient6_process.wait()
+        self.wan_dhclient6_process = None
+
+        self.wan_dhclient6_server.shutdown()
+        self.wan_dhclient6_server.server_close()
+        self.wan_dhclient6_server = None
+        self.wan_dhclient6_server_thread.join()
+        self.wan_dhclient6_server_thread = None
+
+        logging.info('wan_dhclient6 stopped')
 
     def start_lan_radvd(self):
         if self.lan_radvd_process is not None:
@@ -134,8 +166,15 @@ interface %(iface)s {\n\
         self.lan_radvd_process = None
 
     def shutdown(self):
-        self.stop_wan_dhcpv6_client()
-        self.stop_lan_radvd()
+        self.shutdown_event.set()
+
+        with self.lock:
+            self.stop_wan_dhclient6()
+            self.stop_lan_radvd()
+
+    def handle_dhclient6_command(self, command_obj):
+        logging.info('Received dhclient6_command')
+        logging.debug('dhclient6_command: %s' % command_obj)
 
     @staticmethod
     def std_stream_dup(prefix, process_stream):  # polling thread
@@ -150,6 +189,10 @@ interface %(iface)s {\n\
             system_stdout.write(prefix)
             system_stdout.write(line.decode('utf-8'))
 
+    @classmethod
+    def _server_thread(cls, server):
+        logging.info('Serving %s ...', repr(type(server)))
+        server.serve_forever()
 
 def service():
     logging.info('Running as a service')
@@ -161,8 +204,9 @@ def service():
     logging.info('Adding current interfaces')
     dispatcher = Dispatcher(wan_interface, lan_interface, state_dir)
     with pyroute2.IPRoute() as netlink_route:
-        for interface in netlink_route.get_links():
-            dispatcher.add_interface(interface['index'], dict(interface['attrs'])['IFLA_IFNAME'])
+        for iface in netlink_route.get_links():
+            if iface.get_attr('IFLA_OPERSTATE') == 'UP':
+                dispatcher.add_interface(iface['index'], iface.get_attr('IFLA_IFNAME'))
 
     def ipdb_callback(ipdb, msg, action):
         logging.debug('NETLINK event: %s, %s' % (repr(msg), action))
@@ -208,10 +252,6 @@ def service():
     ipdb.unregister_callback(ipdb_cb)
     ipdb.release()
     dispatcher.shutdown()
-
-
-def dhcp_script():
-    logging.info('Running as a dhcp script')
 
 
 if __name__ == '__main__':
