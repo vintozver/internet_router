@@ -2,15 +2,17 @@ import socketserver
 import os
 import logging
 import json
+import typing
 
 
 class CommandServer(socketserver.UnixStreamServer):
     allow_reuse_address = True
 
-    def __init__(self, dispatcher, socket_filename: str):
+    def __init__(self, socket_filename: str, comm_key: bytes, callback: typing.Callable[[typing.Mapping], None]):
         logging.info('Init wan_dhclient6_server')
 
-        self.dispatcher = dispatcher
+        self.comm_key = comm_key
+        self.callback = callback
 
         super(CommandServer, self).__init__(socket_filename, CommandHandler)
 
@@ -25,20 +27,20 @@ class CommandServer(socketserver.UnixStreamServer):
 
 class CommandHandler(socketserver.BaseRequestHandler):
     def handle(self):
-        logging.info('Incoming wan_dhclient6_server command')
+        logging.info('wan_dhclient6_server incoming command')
 
         command_bytes = self.request.recv(4096)
-        if command_bytes[:128] != self.server.dispatcher.comm_key:
-            logging.warning('Incoming wan_dhclient6_server command comm_key mismatch, skipping')
+        if command_bytes[:128] != self.server.comm_key:
+            logging.warning('wan_dhclient6_server command comm_key mismatch, skipping')
             return
 
-        logging.info('Incoming wan_dhclient6_server comm_key matched, processing')
+        logging.info('wan_dhclient6_server comm_key match, processing')
         command_obj = None
         try:
             command_obj = json.loads(command_bytes[128:].decode('utf-8'))
-            logging.debug('dhclient6 command received %s' % command_obj)
+            logging.debug('wan_dhclient6_server command received: %s' % command_obj)
         except json.JSONDecodeError as err:
-            logging.error('Error decoding json command. Details: %s' % err)
+            logging.error('wan_dhclient6_server error decoding json command. Details: %s' % err)
         if command_obj is not None:
-            logging.info('Invoking dispatcher from dhclient6 command handler')
-            self.server.dispatcher.handle_dhclient6_command(command_obj)
+            logging.info('wan_dhclient6_server invoking callback')
+            self.server.callback(command_obj)

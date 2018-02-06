@@ -64,7 +64,11 @@ class Dispatcher(object):
 
         logging.info('Creating wan_dhclient6_server thread')
         from . import wan_dhclient6_server
-        self.wan_dhclient6_server = wan_dhclient6_server.CommandServer(self, os.path.join(self.state_dir, 'dhclient6_comm'))
+        self.wan_dhclient6_server = wan_dhclient6_server.CommandServer(
+            os.path.join(self.state_dir, 'dhclient6_comm'),
+            self.comm_key,
+            self.handle_dhclient6_command
+        )
         self.wan_dhclient6_server_thread = Thread(target=self._server_thread, args=(self.wan_dhclient6_server, ))
         self.wan_dhclient6_server_thread.start()
 
