@@ -174,9 +174,21 @@ interface %(iface)s {\n\
         )
         self.lan_radvd_thread_stderr.start()
 
+        logging.debug('lan_radvd setting sysctl')
+        try:
+            self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'], '1')
+        except SysctlControllerException:
+            pass
+
     def stop_lan_radvd(self):
         if self.lan_radvd_process is None:
             return
+
+        logging.debug('lan_radvd restoring sysctl')
+        try:
+            self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'])
+        except SysctlControllerException:
+            pass
 
         self.lan_radvd_process.send_signal(signal.SIGTERM)
         self.lan_radvd_thread_stdout.join()
