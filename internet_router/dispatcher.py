@@ -266,7 +266,7 @@ interface %(iface)s {\n\
             try:
                 with pyroute2.IPRoute() as netlink_route:
                     idx = netlink_route.link_lookup(ifname=self.lan_interface)[0]
-                    netlink_route.addr('del', index=idx, address=subnet[1], prefixlen=subnet.prefixlen)
+                    netlink_route.addr('del', index=idx, address=str(subnet[1]), prefixlen=subnet.prefixlen)
             except pyroute2.NetlinkError:
                 logging.error('dhclient6_command could not delete old prefix first address')
 
@@ -283,7 +283,7 @@ interface %(iface)s {\n\
                     idx = netlink_route.link_lookup(ifname=self.lan_interface)[0]
                     netlink_route.addr(
                         'add',
-                        index=idx, address=subnet[1], prefixlen=subnet.prefixlen,
+                        index=idx, address=str(subnet[1]), prefixlen=subnet.prefixlen,
                         IFA_CACHEINFO={
                             'ifa_prefered': new_preferred_life,
                             'ifa_valid': new_max_life,
