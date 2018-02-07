@@ -1,8 +1,6 @@
 #!python3
 
 import sys
-import os
-import os.path
 import pyroute2
 import pyroute2.ipdb
 import signal
@@ -60,7 +58,7 @@ def service():
 
     while True:
         try:
-            if termination_event.wait(5):
+            if termination_event.wait(60):
                 logging.info('Event triggered. Shutting down ...')
                 break
             logging.error('Still working: my WAN addresses: %s, my prefixes: %s' % (

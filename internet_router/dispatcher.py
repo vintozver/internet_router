@@ -7,6 +7,7 @@ import subprocess
 import signal
 import typing
 import logging
+import ipaddress
 from .sysctl import SysctlController, SysctlControllerException
 from threading import Thread, Event, Lock
 
@@ -35,7 +36,7 @@ class Dispatcher(object):
         self.wan_dhclient6_thread_stderr = None  # radvd on the LAN interface (stderr thread poll)
 
         self.my_wan_addresses = list()
-        self.my_lan_prefixes = list()
+        self.my_lan_prefixes = dict()
 
     def add_interface(self, index, name):
         logging.info('Adding interface to the topology %d:%s' % (index, name))
@@ -204,61 +205,92 @@ interface %(iface)s {\n\
 
         with self.lock:
             if reason in ['BOUND6', 'RENEW6', 'REBIND6', 'REBOOT6']:
-                old_ip6_address = command_obj.get('old_ip6_address')
-                if old_ip6_address is not None:
-                    old_ip6_prefixlen = int(command_obj['old_ip6_prefixlen'])
-                    try:
-                        self.my_wan_addresses.remove((old_ip6_address, old_ip6_prefixlen))
-                    except ValueError:
-                        pass
-
-                    try:
-                        with pyroute2.IPRoute() as netlink_route:
-                            idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
-                            netlink_route.addr('del', index=idx, address=old_ip6_address, prefixlen=old_ip6_prefixlen)
-                    except pyroute2.NetlinkError:
-                        logging.error('dhclient6_command could not delete old address')
-
-                new_ip6_address = command_obj.get('new_ip6_address')
-                if new_ip6_address is not None:
-                    new_ip6_prefixlen = int(command_obj['new_ip6_prefixlen'])
-                    self.my_wan_addresses.append((new_ip6_address, new_ip6_prefixlen))
-
-                    new_preferred_life = int(command_obj['new_preferred_life'])
-                    new_max_life = int(command_obj['new_max_life'])
-
-                    try:
-                        with pyroute2.IPRoute() as netlink_route:
-                            idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
-                            netlink_route.addr(
-                                'add',
-                                index=idx, address=new_ip6_address, prefixlen=new_ip6_prefixlen,
-                                IFA_CACHEINFO={
-                                    'ifa_prefered': new_preferred_life,
-                                    'ifa_valid': new_max_life,
-                                }
-                            )
-                    except pyroute2.NetlinkError:
-                        logging.error('dhclient6_command could add new address')
-
+                self.handle_dhclient6_command_old_ip6_prefix(command_obj)
+                self.handle_dhclient6_command_old_ip6_address(command_obj)
+                self.handle_dhclient6_command_new_ip6_address(command_obj)
+                self.handle_dhclient6_command_new_ip6_prefix(command_obj)
             elif reason in ['EXPIRE6', 'FAIL6', 'STOP6', 'RELEASE6']:
-                old_ip6_address = command_obj.get('old_ip_address')
-                if old_ip6_address is not None:
-                    old_ip6_prefixlen = int(command_obj['old_ip6_prefixlen'])
-                    try:
-                        self.my_wan_addresses.remove((old_ip6_address, old_ip6_prefixlen))
-                    except ValueError:
-                        pass
-
-                    try:
-                        with pyroute2.IPRoute() as netlink_route:
-                            idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
-                            netlink_route.addr('del', index=idx, address=old_ip6_address, prefixlen=old_ip6_prefixlen)
-                    except pyroute2.NetlinkError:
-                        logging.error('dhclient6_command could not delete old address')
-
+                self.handle_dhclient6_command_old_ip6_prefix(command_obj)
+                self.handle_dhclient6_command_old_ip6_address(command_obj)
             else:
                 pass
+
+    def handle_dhclient6_command_old_ip6_address(self, command_obj) -> None:
+        old_ip6_address = command_obj.get('old_ip6_address')
+        if old_ip6_address is not None:
+            old_ip6_prefixlen = int(command_obj['old_ip6_prefixlen'])
+            try:
+                self.my_wan_addresses.remove((old_ip6_address, old_ip6_prefixlen))
+            except ValueError:
+                pass
+
+            try:
+                with pyroute2.IPRoute() as netlink_route:
+                    idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
+                    netlink_route.addr('del', index=idx, address=old_ip6_address, prefixlen=old_ip6_prefixlen)
+            except pyroute2.NetlinkError:
+                logging.error('dhclient6_command could not delete old address')
+
+    def handle_dhclient6_command_new_ip6_address(self, command_obj) -> None:
+        new_ip6_address = command_obj.get('new_ip6_address')
+        if new_ip6_address is not None:
+            new_ip6_prefixlen = int(command_obj['new_ip6_prefixlen'])
+            self.my_wan_addresses.append((new_ip6_address, new_ip6_prefixlen))
+
+            new_preferred_life = int(command_obj['new_preferred_life'])
+            new_max_life = int(command_obj['new_max_life'])
+
+            try:
+                with pyroute2.IPRoute() as netlink_route:
+                    idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
+                    netlink_route.addr(
+                        'add',
+                        index=idx, address=new_ip6_address, prefixlen=new_ip6_prefixlen,
+                        IFA_CACHEINFO={
+                            'ifa_prefered': new_preferred_life,
+                            'ifa_valid': new_max_life,
+                        }
+                    )
+            except pyroute2.NetlinkError:
+                logging.error('dhclient6_command could not add new address')
+
+    def handle_dhclient6_command_old_ip6_prefix(self, command_obj) -> None:
+        old_ip6_prefix = command_obj.get('old_ip6_prefix')
+        if old_ip6_prefix is not None:
+            subnet = ipaddress.IPv6Network(old_ip6_prefix)
+            try:
+                del self.my_lan_prefixes[subnet]
+            except KeyError:
+                pass
+
+            try:
+                with pyroute2.IPRoute() as netlink_route:
+                    idx = netlink_route.link_lookup(ifname=self.lan_interface)[0]
+                    netlink_route.addr('del', index=idx, address=subnet[1], prefixlen=subnet.prefixlen)
+            except pyroute2.NetlinkError:
+                logging.error('dhclient6_command could not delete old prefix first address')
+
+    def handle_dhclient6_command_new_ip6_prefix(self, command_obj) -> None:
+        new_ip6_prefix = command_obj.get('new_ip6_prefix')
+        if new_ip6_prefix is not None:
+            subnet = ipaddress.IPv6Network(new_ip6_prefix)
+            new_preferred_life = int(command_obj['new_preferred_life'])
+            new_max_life = int(command_obj['new_max_life'])
+            self.my_lan_prefixes[subnet] = {'preferred_life': new_preferred_life, 'max_life': new_max_life}
+
+            try:
+                with pyroute2.IPRoute() as netlink_route:
+                    idx = netlink_route.link_lookup(ifname=self.lan_interface)[0]
+                    netlink_route.addr(
+                        'add',
+                        index=idx, address=subnet[1], prefixlen=subnet.prefixlen,
+                        IFA_CACHEINFO={
+                            'ifa_prefered': new_preferred_life,
+                            'ifa_valid': new_max_life,
+                        }
+                    )
+            except pyroute2.NetlinkError:
+                logging.error('dhclient6_command could not add new prefix first address')
 
     @staticmethod
     def std_stream_dup(prefix, process_stream):  # polling thread
