@@ -14,8 +14,8 @@ interface {{ iface }} {
         AdvValidLifetime {{ prefix['max_life'] }};
     };
     {% endfor %}
-    {% if rdnss|len > 0 %}
-    rdnss {% for rdnss_item in rndss %}{{rdnss_item}} {% endfor %}{
+    {% if rdnss|length > 0 %}
+    RDNSS {% for rdnss_item in rdnss %}{{rdnss_item}} {% endfor %}{
     };
     {% endif %}
 };
@@ -23,4 +23,4 @@ interface {{ iface }} {
 
 
 def build(iface: str, prefixes: typing.Iterable[typing.Dict], rdnss: typing.Iterable[str]) -> str:
-    return jinja2.Template(template).render({'iface': iface, 'prefixes': prefixes, 'rndss': rdnss})
+    return jinja2.Template(template).render({'iface': iface, 'prefixes': prefixes, 'rdnss': rdnss})
