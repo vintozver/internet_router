@@ -1,2 +1,3 @@
 setuptools
 pyroute2
+jinja2

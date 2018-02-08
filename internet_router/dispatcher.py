@@ -8,6 +8,7 @@ import signal
 import typing
 import logging
 import ipaddress
+from . import lan_radvd_conf
 from .sysctl import SysctlController, SysctlControllerException
 from threading import Thread, Event, Lock
 
@@ -137,17 +138,39 @@ class Dispatcher(object):
 
         logging.info('wan_dhclient6 stopped')
 
+    def update_lan_radvd(self):
+        radvd_conf_filename = os.path.join(self.state_dir, 'radvd.conf')
+        with open(radvd_conf_filename, 'r') as radvd_conf_file:
+            radvd_old_conf = radvd_conf_file.read()
+
+        radvd_new_conf = lan_radvd_conf.build(
+            self.lan_interface,
+            [{
+                'subnet': str(prefix[0]),
+                'preferred_life': prefix[1]['preferred_life'],
+                'max_life': prefix[1]['max_life'],
+            } for prefix in self.my_lan_prefixes.items()]
+        )
+
+        open(radvd_conf_filename, 'w').write(radvd_new_conf)
+
+        self.stop_lan_radvd()
+        if not self.shutdown_event.is_set() and len(self.my_lan_prefixes) > 0:
+            self.start_lan_radvd()
+
     def start_lan_radvd(self):
         if self.lan_radvd_process is not None:
             return
 
         radvd_conf_filename = os.path.join(self.state_dir, 'radvd.conf')
-        open(radvd_conf_filename, 'w').write('\
-interface %(iface)s {\n\
-};\n\
-' % {
-            'iface': self.lan_interface
-        })
+        open(radvd_conf_filename, 'w').write(lan_radvd_conf.build(
+            self.lan_interface,
+            [{
+                'subnet': str(prefix[0]),
+                'preferred_life': prefix[1]['preferred_life'],
+                'max_life': prefix[1]['max_life'],
+            } for prefix in self.my_lan_prefixes.items()]
+        ))
 
         self.lan_radvd_process = subprocess.Popen(
             [
@@ -247,7 +270,7 @@ interface %(iface)s {\n\
         new_ip6_address = command_obj.get('new_ip6_address')
         if new_ip6_address is not None:
             new_ip6_prefixlen = int(command_obj['new_ip6_prefixlen'])
-            self.my_wan_addresses.append((new_ip6_address, new_ip6_prefixlen))
+            self.my_wan_addresses.append((new_ip6_address, new_ip6_prefixlen, ))
 
             new_preferred_life = int(command_obj['new_preferred_life'])
             new_max_life = int(command_obj['new_max_life'])
