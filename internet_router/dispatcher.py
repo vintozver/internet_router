@@ -166,6 +166,12 @@ class Dispatcher(object):
         if self.lan_radvd_process is not None:
             return
 
+        logging.debug('lan_radvd setting sysctl')
+        try:
+            self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'], '1')
+        except SysctlControllerException:
+            pass
+
         radvd_conf_filename = os.path.join(self.state_dir, 'radvd.conf')
 
         self.lan_radvd_process = subprocess.Popen(
@@ -193,21 +199,9 @@ class Dispatcher(object):
         )
         self.lan_radvd_thread_stderr.start()
 
-        logging.debug('lan_radvd setting sysctl')
-        try:
-            self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'], '1')
-        except SysctlControllerException:
-            pass
-
     def stop_lan_radvd(self):
         if self.lan_radvd_process is None:
             return
-
-        logging.debug('lan_radvd restoring sysctl')
-        try:
-            self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'])
-        except SysctlControllerException:
-            pass
 
         self.lan_radvd_process.send_signal(signal.SIGTERM)
         self.lan_radvd_thread_stdout.join()
@@ -216,6 +210,12 @@ class Dispatcher(object):
         self.lan_radvd_thread_stderr = None
         self.lan_radvd_process.wait()
         self.lan_radvd_process = None
+
+        logging.debug('lan_radvd restoring sysctl')
+        try:
+            self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'])
+        except SysctlControllerException:
+            pass
 
     def shutdown(self):
         self.shutdown_event.set()
