@@ -46,7 +46,7 @@ class Dispatcher(object):
             if name == self.wan_interface:
                 self.start_wan_dhclient6()
             elif name == self.lan_interface:
-                self.start_lan_radvd()
+                self.update_lan_radvd()
             else:
                 pass
 
@@ -57,7 +57,7 @@ class Dispatcher(object):
             if name == self.wan_interface:
                 self.stop_wan_dhclient6()
             elif name == self.lan_interface:
-                self.stop_lan_radvd()
+                self.update_lan_radvd()
 
     def start_wan_dhclient6(self):
         if self.wan_dhclient6_process is not None:
@@ -140,8 +140,11 @@ class Dispatcher(object):
 
     def update_lan_radvd(self):
         radvd_conf_filename = os.path.join(self.state_dir, 'radvd.conf')
-        with open(radvd_conf_filename, 'r') as radvd_conf_file:
-            radvd_old_conf = radvd_conf_file.read()
+        try:
+            with open(radvd_conf_filename, 'r') as radvd_conf_file:
+                radvd_old_conf = radvd_conf_file.read()
+        except OSError:
+            radvd_old_conf = ''
 
         radvd_new_conf = lan_radvd_conf.build(
             self.lan_interface,
@@ -152,25 +155,18 @@ class Dispatcher(object):
             } for prefix in self.my_lan_prefixes.items()]
         )
 
-        open(radvd_conf_filename, 'w').write(radvd_new_conf)
+        if radvd_old_conf != radvd_new_conf:
+            open(radvd_conf_filename, 'w').write(radvd_new_conf)
 
-        self.stop_lan_radvd()
-        if not self.shutdown_event.is_set() and len(self.my_lan_prefixes) > 0:
-            self.start_lan_radvd()
+            self.stop_lan_radvd()
+            if not self.shutdown_event.is_set() and len(self.my_lan_prefixes) > 0:
+                self.start_lan_radvd()
 
     def start_lan_radvd(self):
         if self.lan_radvd_process is not None:
             return
 
         radvd_conf_filename = os.path.join(self.state_dir, 'radvd.conf')
-        open(radvd_conf_filename, 'w').write(lan_radvd_conf.build(
-            self.lan_interface,
-            [{
-                'subnet': str(prefix[0]),
-                'preferred_life': prefix[1]['preferred_life'],
-                'max_life': prefix[1]['max_life'],
-            } for prefix in self.my_lan_prefixes.items()]
-        ))
 
         self.lan_radvd_process = subprocess.Popen(
             [
@@ -244,9 +240,11 @@ class Dispatcher(object):
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
                 self.handle_dhclient6_command_new_ip6_address(command_obj)
                 self.handle_dhclient6_command_new_ip6_prefix(command_obj)
+                self.update_lan_radvd()
             elif reason in ['EXPIRE6', 'FAIL6', 'STOP6', 'RELEASE6']:
                 self.handle_dhclient6_command_old_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
+                self.update_lan_radvd()
             else:
                 pass
 
