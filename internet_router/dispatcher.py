@@ -38,6 +38,7 @@ class Dispatcher(object):
 
         self.my_wan_addresses = list()
         self.my_lan_prefixes = dict()
+        self.my_rdnss = set()
 
     def add_interface(self, index, name):
         logging.info('Adding interface to the topology %d:%s' % (index, name))
@@ -152,7 +153,8 @@ class Dispatcher(object):
                 'subnet': str(prefix[0]),
                 'preferred_life': prefix[1]['preferred_life'],
                 'max_life': prefix[1]['max_life'],
-            } for prefix in self.my_lan_prefixes.items()]
+            } for prefix in self.my_lan_prefixes.items()],
+            [str(rdnss_item) for rdnss_item in self.my_rdnss],
         )
 
         if radvd_old_conf != radvd_new_conf:
@@ -236,12 +238,15 @@ class Dispatcher(object):
 
         with self.lock:
             if reason in ['BOUND6', 'RENEW6', 'REBIND6', 'REBOOT6']:
+                self.handle_dhclient6_command_old_ip6_rdnss(command_obj)
                 self.handle_dhclient6_command_old_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
                 self.handle_dhclient6_command_new_ip6_address(command_obj)
                 self.handle_dhclient6_command_new_ip6_prefix(command_obj)
+                self.handle_dhclient6_command_new_ip6_rdnss(command_obj)
                 self.update_lan_radvd()
             elif reason in ['EXPIRE6', 'FAIL6', 'STOP6', 'RELEASE6']:
+                self.handle_dhclient6_command_old_ip6_rdnss(command_obj)
                 self.handle_dhclient6_command_old_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
                 self.update_lan_radvd()
@@ -324,6 +329,24 @@ class Dispatcher(object):
                     )
             except pyroute2.NetlinkError:
                 logging.error('dhclient6_command could not add new prefix first address')
+
+    def handle_dhclient6_command_old_ip6_rdnss(self, command_obj) -> None:
+        rdnss_value = command_obj.get('old_dhcp6_name_servers')
+        if rdnss_value is not None:
+            for rdnss_item in [ipaddress.IPv6Address(rdnss_value_item) for rdnss_value_item in rdnss_value.split(' ')]:
+                try:
+                    self.my_rdnss.remove(rdnss_item)
+                except KeyError:
+                    pass
+
+    def handle_dhclient6_command_new_ip6_rdnss(self, command_obj) -> None:
+        rdnss_value = command_obj.get('new_dhcp6_name_servers')
+        if rdnss_value is not None:
+            for rdnss_item in [ipaddress.IPv6Address(rdnss_value_item) for rdnss_value_item in rdnss_value.split(' ')]:
+                try:
+                    self.my_rdnss.add(rdnss_item)
+                except KeyError:
+                    pass
 
     @staticmethod
     def std_stream_dup(prefix, process_stream):  # polling thread
