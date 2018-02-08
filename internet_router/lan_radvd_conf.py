@@ -6,7 +6,7 @@ template = '''
 interface {{ iface }} {
     AdvSendAdvert on;
     {% for prefix in prefixes %}
-    prefix {{ prefix['addr'] }} {
+    prefix {{ prefix['subnet'] }} {
         AdvOnLink on;
         AdvAutonomous on;
         AdvRouterAddr on;
