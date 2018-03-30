@@ -101,9 +101,15 @@ class Dispatcher(object):
         )
         self.wan_dhclient6_thread_stderr.start()
 
-        logging.debug('wan_dhclient6 setting sysctl')
+        logging.debug('wan_dhclient6 setting forwarding sysctl')
         try:
             self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'forwarding'], '1')
+        except SysctlControllerException:
+            pass
+        # accept routers even if the forwarding is enabled
+        logging.debug('wan_dhclient6 setting routing advertisement sysctl')
+        try:
+            self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'accept_ra'], '2')
         except SysctlControllerException:
             pass
 
@@ -115,7 +121,12 @@ class Dispatcher(object):
 
         logging.info('wan_dhclient6 stopping ...')
 
-        logging.debug('wan_dhclient6 restoring sysctl')
+        logging.debug('wan_dhclient6 restoring routing advertisement sysctl')
+        try:
+            self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'accept_ra'])
+        except SysctlControllerException:
+            pass
+        logging.debug('wan_dhclient6 restoring forwarding sysctl')
         try:
             self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'forwarding'])
         except SysctlControllerException:
