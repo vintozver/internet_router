@@ -148,7 +148,7 @@ data-dir {{ data_path }}
             tayga_tun.returncode, tayga_out.decode('utf-8'), tayga_err.decode('utf-8')
         ))
 
-    def update(self, prefix: ipaddress.IPv6Network ) -> None:
+    def update(self, prefix: ipaddress.IPv6Network=None) -> None:
         self.prefix = prefix
 
         if self.prefix is not None:

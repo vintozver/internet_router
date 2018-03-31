@@ -32,8 +32,10 @@ class Dispatcher(object):
         with self.lock:
             if name == self.wan_interface:
                 self.wan_dhclient6.start()
+                self.update_tayga()
             elif name == self.lan_interface:
                 self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
+                self.update_tayga()
             else:
                 pass
 
