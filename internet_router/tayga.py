@@ -50,6 +50,10 @@ data-dir {{ data_path }}
 
     def __init__(self, state_dir):
         self.store_dir = os.path.join(state_dir, 'tayga')
+        try:
+            os.mkdir(self.store_dir)
+        except OSError:
+            pass
         self.conf_file_path = os.path.join(state_dir, 'tayga.conf')
         self.pid_file_path = os.path.join(state_dir, 'tayga.pid')
 
@@ -161,7 +165,7 @@ data-dir {{ data_path }}
             new_conf = self.build_config(
                 'nat64',
                 str(prefix),
-                self.conf_file_path
+                self.store_dir
             )
 
             if old_conf != new_conf:
