@@ -37,7 +37,7 @@ class TaygaManager(object):
     """NAT64 translator"""
 
     CONFIG_TMPL = '''
-tun_device {{ iface }}
+tun-device {{ iface }}
 ipv4-addr 192.168.255.1
 prefix {{ prefix }}
 dynamic-pool 192.168.255.0/24

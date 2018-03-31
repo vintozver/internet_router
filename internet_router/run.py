@@ -30,7 +30,12 @@ def service():
 
         if action == 'RTM_NEWLINK':
             ifindex = msg['index']
-            ifname = ipdb.interfaces[ifindex]['ifname']
+            try:
+                interface = ipdb.interfaces[ifindex]
+            except KeyError:
+                logging.warning('NETLINK warning. Interface does not exist, skipping')
+                return
+            ifname = interface['ifname']
             if msg.get_attr('IFLA_OPERSTATE') == 'UP':
                 dispatcher.add_interface(ifindex, ifname)
             else:
@@ -39,12 +44,17 @@ def service():
 
         if action == 'RTM_DELLINK':
             ifindex = msg['index']
-            ifname = ipdb.interfaces[ifindex]['ifname']
+            try:
+                interface = ipdb.interfaces[ifindex]
+            except KeyError:
+                logging.warning('NETLINK warning. Interface does not exist, skipping')
+                return
+            ifname = interface['ifname']
             dispatcher.remove_interface(ifindex, ifname)
             return
 
-    ipdb = pyroute2.IPDB()
-    ipdb_cb = ipdb.register_callback(ipdb_callback)
+    global_ipdb = pyroute2.IPDB()
+    ipdb_cb = global_ipdb.register_callback(ipdb_callback)
 
     termination_event = Event()
 
@@ -68,8 +78,8 @@ def service():
             logging.info('Interrupt received. Shutting down ...')
             break
 
-    ipdb.unregister_callback(ipdb_cb)
-    ipdb.release()
+    global_ipdb.unregister_callback(ipdb_cb)
+    global_ipdb.release()
     dispatcher.shutdown()
 
 
