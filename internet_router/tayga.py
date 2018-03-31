@@ -148,7 +148,7 @@ data-dir {{ data_path }}
             tayga_tun.returncode, tayga_out.decode('utf-8'), tayga_err.decode('utf-8')
         ))
 
-    def update(self, prefix: ipaddress.IPv6Network=None) -> None:
+    def update(self, prefix: ipaddress.IPv6Network ) -> None:
         self.prefix = prefix
 
         if self.prefix is not None:
@@ -168,7 +168,8 @@ data-dir {{ data_path }}
                 open(self.conf_file_path, 'w').write(new_conf)
 
                 self.stop()
-                self.start()
+
+            self.start()
         else:
             self.stop()
             try:
