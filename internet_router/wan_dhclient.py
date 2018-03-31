@@ -23,7 +23,6 @@ class WanDhcpClient6(object):
             callback: typing.Callable[[typing.Mapping], None]
     ):
         self.comm_file_path = os.path.join(state_dir, 'dhclient6_comm')
-        self.comm_key = open('/dev/urandom', 'rb').read(128)
         self.script_file_path = os.path.join(state_dir, 'dhclient6_script')
         self.wan_interface = wan_interface
         self.callback = callback
@@ -57,7 +56,7 @@ class WanDhcpClient6(object):
         from . import wan_dhclient_server
         self.server = wan_dhclient_server.CommandServer(
             '6',
-            self.comm_file_path, self.comm_key,
+            self.comm_file_path,
             self.callback
         )
         self.server_thread = Thread(target=_server_thread, args=(self.server,))

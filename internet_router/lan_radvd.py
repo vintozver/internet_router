@@ -44,8 +44,8 @@ class LanRadvdManager(object):
         if old_conf != new_conf:
             open(self.conf_file_path, 'w').write(new_conf)
 
-            if self.process is not None:
-                self.stop()
+            self.stop()
+            if len(lan_prefixes) > 0:
                 self.start()
 
     def start(self):

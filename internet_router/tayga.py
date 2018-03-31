@@ -59,7 +59,7 @@ data-dir {{ data_path }}
 
         self.shutdown_event = Event()
 
-        self.prefix: ipaddress.IPv6Network = None
+        self.prefix = None  # type: ipaddress.IPv6Network
 
     def start(self):
         if self.process is not None:

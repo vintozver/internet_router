@@ -13,7 +13,6 @@ def dhclient4():
     state_dir = sys.argv[1]
     logging.info('dhclient4_script invoked, state_dir: %s' % state_dir)
 
-    comm_key = open(os.path.join(state_dir, 'comm_key'), 'rb').read()
     environment_bytes = json.dumps(dict(os.environ.items())).encode('utf-8')
 
     logging.info('dhclient4_script creating command socket')
@@ -22,7 +21,7 @@ def dhclient4():
         # Connect to server and send data
         sock.connect(os.path.join(state_dir, 'dhclient4_comm'))
         logging.info('dhclient4_script sending key + cmd ...')
-        sock.sendall(comm_key + environment_bytes)
+        sock.sendall(environment_bytes)
         logging.info('dhclient4_script done')
     finally:
         logging.info('dhclient4_script closing command socket')
@@ -33,7 +32,6 @@ def dhclient6():
     state_dir = sys.argv[1]
     logging.info('dhclient6_script invoked, state_dir: %s' % state_dir)
 
-    comm_key = open(os.path.join(state_dir, 'comm_key'), 'rb').read()
     environment_bytes = json.dumps(dict(os.environ.items())).encode('utf-8')
 
     logging.info('dhclient6_script creating command socket')
@@ -42,7 +40,7 @@ def dhclient6():
         # Connect to server and send data
         sock.connect(os.path.join(state_dir, 'dhclient6_comm'))
         logging.info('dhclient6_script sending key + cmd ...')
-        sock.sendall(comm_key + environment_bytes)
+        sock.sendall(environment_bytes)
         logging.info('dhclient6_script done')
     finally:
         logging.info('dhclient6_script closing command socket')
