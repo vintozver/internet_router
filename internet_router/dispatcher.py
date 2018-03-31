@@ -43,8 +43,10 @@ class Dispatcher(object):
         with self.lock:
             if name == self.wan_interface:
                 self.wan_dhclient6.stop()
+                self.update_tayga()
             elif name == self.lan_interface:
                 self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
+                self.update_tayga()
 
     def shutdown(self):
         with self.lock:
@@ -71,11 +73,13 @@ class Dispatcher(object):
                 self.handle_dhclient6_command_new_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_new_ip6_rdnss(command_obj)
                 self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
+                self.update_tayga()
             elif reason in ['EXPIRE6', 'FAIL6', 'STOP6', 'RELEASE6']:
                 self.handle_dhclient6_command_old_ip6_rdnss(command_obj)
                 self.handle_dhclient6_command_old_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
                 self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
+                self.update_tayga()
             else:
                 pass
 
