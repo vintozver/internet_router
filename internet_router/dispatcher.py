@@ -3,38 +3,27 @@ import os
 import os.path
 import pyroute2
 import pyroute2.ipdb
-import subprocess
-import signal
-import typing
 import logging
 import ipaddress
-from . import lan_radvd_conf
-from .sysctl import SysctlController, SysctlControllerException
-from threading import Thread, Event, Lock
+from .wan_dhclient import WanDhcpClient6
+from .lan_radvd import LanRadvdManager
+from .tayga import TaygaManager
+from threading import Lock
 
 
 class Dispatcher(object):
     def __init__(self, wan_interface, lan_interface, state_dir):
-        self.comm_key = open('/dev/urandom', 'rb').read(128)
-        open(os.path.join(state_dir, 'comm_key'), 'wb').write(self.comm_key)
+        self.wan_dhclient6 = WanDhcpClient6(state_dir, wan_interface, self.handle_dhclient6_command)
+        self.lan_radvd = LanRadvdManager(state_dir, lan_interface)
+        self.tayga = TaygaManager(state_dir)
 
-        self.sysctl_controller = SysctlController()
         self.wan_interface = wan_interface
         self.lan_interface = lan_interface
         self.state_dir = state_dir
 
-        self.shutdown_event = Event()
-
         # instance is thread safe
         # lock is necessary, only once interface method may be running at the same time
         self.lock = Lock()
-
-        self.wan_dhclient6_process = None  # DHCPv6 client on the WAN interface (process)
-        self.wan_dhclient6_thread_stdout = None  # DHCPv6 client on the WAN interface (stdout thread poll)
-        self.wan_dhclient6_thread_stderr = None  # DHCPv6 client on the WAN interface (stderr thread poll)
-        self.lan_radvd_process = None  # radvd on the LAN interface (process)
-        self.lan_radvd_thread_stdout = None  # radvd on the LAN interface (stdout thread poll)
-        self.wan_dhclient6_thread_stderr = None  # radvd on the LAN interface (stderr thread poll)
 
         self.my_wan_addresses = list()
         self.my_lan_prefixes = dict()
@@ -45,9 +34,9 @@ class Dispatcher(object):
 
         with self.lock:
             if name == self.wan_interface:
-                self.start_wan_dhclient6()
+                self.wan_dhclient6.start()
             elif name == self.lan_interface:
-                self.update_lan_radvd()
+                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
             else:
                 pass
 
@@ -56,186 +45,15 @@ class Dispatcher(object):
 
         with self.lock:
             if name == self.wan_interface:
-                self.stop_wan_dhclient6()
+                self.wan_dhclient6.stop()
             elif name == self.lan_interface:
-                self.update_lan_radvd()
-
-    def start_wan_dhclient6(self):
-        if self.wan_dhclient6_process is not None:
-            return
-
-        logging.info('wan_dhclient6 starting ...')
-
-        logging.debug('wan_dhclient6 starting script server thread')
-        from . import wan_dhclient6_server
-        self.wan_dhclient6_server = wan_dhclient6_server.CommandServer(
-            os.path.join(self.state_dir, 'dhclient6_comm'),
-            self.comm_key,
-            self.handle_dhclient6_command
-        )
-        self.wan_dhclient6_server_thread = Thread(target=self._server_thread, args=(self.wan_dhclient6_server, ))
-        self.wan_dhclient6_server_thread.start()
-
-        logging.debug('wan_dhclient6 starting dhclient process')
-        self.wan_dhclient6_process = subprocess.Popen(
-            [
-                'dhclient', '--no-pid', '-d', '-v', '-6', '-P', '-N',
-                '-sf', os.path.join(self.state_dir, 'dhclient6_script'),
-                self.wan_interface
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=os.environ
-        )
-        self.wan_dhclient6_thread_stdout = Thread(
-            target=self.std_stream_dup,
-            args=('WAN DHCPv6 client stdout: ', self.wan_dhclient6_process.stdout),
-            name='WAN_dhclient6_stdout',
-        )
-        self.wan_dhclient6_thread_stdout.start()
-        self.wan_dhclient6_thread_stderr = Thread(
-            target=self.std_stream_dup,
-            args=('WAN DHCPv6 client stderr: ', self.wan_dhclient6_process.stderr),
-            name='WAN_dhclient6_stderr',
-        )
-        self.wan_dhclient6_thread_stderr.start()
-
-        logging.debug('wan_dhclient6 setting forwarding sysctl')
-        try:
-            self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'forwarding'], '1')
-        except SysctlControllerException:
-            pass
-        # accept routers even if the forwarding is enabled
-        logging.debug('wan_dhclient6 setting routing advertisement sysctl')
-        try:
-            self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'accept_ra'], '2')
-        except SysctlControllerException:
-            pass
-
-        logging.info('wan_dhclient6 started')
-
-    def stop_wan_dhclient6(self):
-        if self.wan_dhclient6_process is None:
-            return
-
-        logging.info('wan_dhclient6 stopping ...')
-
-        logging.debug('wan_dhclient6 restoring routing advertisement sysctl')
-        try:
-            self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'accept_ra'])
-        except SysctlControllerException:
-            pass
-        logging.debug('wan_dhclient6 restoring forwarding sysctl')
-        try:
-            self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.wan_interface, 'forwarding'])
-        except SysctlControllerException:
-            pass
-
-        logging.debug('wan_dhclient6 stopping dhclient process')
-        self.wan_dhclient6_process.send_signal(signal.SIGTERM)
-        self.wan_dhclient6_thread_stdout.join()
-        self.wan_dhclient6_thread_stdout = None
-        self.wan_dhclient6_thread_stderr.join()
-        self.wan_dhclient6_thread_stderr = None
-        self.wan_dhclient6_process.wait()
-        self.wan_dhclient6_process = None
-
-        logging.debug('wan_dhclient6 stopping dhclient script server thread')
-        self.wan_dhclient6_server.shutdown()
-        self.wan_dhclient6_server.server_close()
-        self.wan_dhclient6_server = None
-        self.wan_dhclient6_server_thread.join()
-        self.wan_dhclient6_server_thread = None
-
-        logging.info('wan_dhclient6 stopped')
-
-    def update_lan_radvd(self):
-        radvd_conf_filename = os.path.join(self.state_dir, 'radvd.conf')
-        try:
-            with open(radvd_conf_filename, 'r') as radvd_conf_file:
-                radvd_old_conf = radvd_conf_file.read()
-        except OSError:
-            radvd_old_conf = ''
-
-        radvd_new_conf = lan_radvd_conf.build(
-            self.lan_interface,
-            [{
-                'subnet': str(prefix[0]),
-                'preferred_life': prefix[1]['preferred_life'],
-                'max_life': prefix[1]['max_life'],
-            } for prefix in self.my_lan_prefixes.items()],
-            [str(rdnss_item) for rdnss_item in self.my_rdnss],
-        )
-
-        if radvd_old_conf != radvd_new_conf:
-            open(radvd_conf_filename, 'w').write(radvd_new_conf)
-
-            self.stop_lan_radvd()
-            if not self.shutdown_event.is_set() and len(self.my_lan_prefixes) > 0:
-                self.start_lan_radvd()
-
-    def start_lan_radvd(self):
-        if self.lan_radvd_process is not None:
-            return
-
-        logging.debug('lan_radvd setting sysctl')
-        try:
-            self.sysctl_controller.set_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'], '1')
-        except SysctlControllerException:
-            pass
-
-        radvd_conf_filename = os.path.join(self.state_dir, 'radvd.conf')
-
-        self.lan_radvd_process = subprocess.Popen(
-            [
-                'radvd', '--nodaemon',
-                '--logmethod', 'stderr', '--debug', '1',
-                '--config=%s' % radvd_conf_filename,
-                '--pidfile=%s' % os.path.join(self.state_dir, 'radvd.pid'),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=os.environ
-        )
-        self.lan_radvd_thread_stdout = Thread(
-            target=self.std_stream_dup,
-            args=('LAN radvd stdout: ', self.lan_radvd_process.stdout),
-            name='LAN_radvd_stdout',
-        )
-        self.lan_radvd_thread_stdout.start()
-        self.lan_radvd_thread_stderr = Thread(
-            target=self.std_stream_dup,
-            args=('LAN radvd stderr: ', self.lan_radvd_process.stderr),
-            name='LAN_radvd_stderr',
-        )
-        self.lan_radvd_thread_stderr.start()
-
-    def stop_lan_radvd(self):
-        if self.lan_radvd_process is None:
-            return
-
-        self.lan_radvd_process.send_signal(signal.SIGTERM)
-        self.lan_radvd_thread_stdout.join()
-        self.lan_radvd_thread_stdout = None
-        self.lan_radvd_thread_stderr.join()
-        self.lan_radvd_thread_stderr = None
-        self.lan_radvd_process.wait()
-        self.lan_radvd_process = None
-
-        logging.debug('lan_radvd restoring sysctl')
-        try:
-            self.sysctl_controller.restore_sysctl(['net', 'ipv6', 'conf', self.lan_interface, 'forwarding'])
-        except SysctlControllerException:
-            pass
+                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
 
     def shutdown(self):
-        self.shutdown_event.set()
-
         with self.lock:
-            self.stop_wan_dhclient6()
-            self.stop_lan_radvd()
+            self.wan_dhclient6.shutdown()
+            self.lan_radvd.shutdown()
+            self.tayga.shutdown()
 
     def handle_dhclient6_command(self, command_obj):
         logging.info('dhclient6_command received')
@@ -255,12 +73,12 @@ class Dispatcher(object):
                 self.handle_dhclient6_command_new_ip6_address(command_obj)
                 self.handle_dhclient6_command_new_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_new_ip6_rdnss(command_obj)
-                self.update_lan_radvd()
+                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
             elif reason in ['EXPIRE6', 'FAIL6', 'STOP6', 'RELEASE6']:
                 self.handle_dhclient6_command_old_ip6_rdnss(command_obj)
                 self.handle_dhclient6_command_old_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
-                self.update_lan_radvd()
+                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
             else:
                 pass
 
@@ -371,8 +189,3 @@ class Dispatcher(object):
                 break
             system_stdout.write(prefix)
             system_stdout.write(line.decode('utf-8'))
-
-    @classmethod
-    def _server_thread(cls, server):
-        logging.info('Serving %s ...', repr(type(server)))
-        server.serve_forever()

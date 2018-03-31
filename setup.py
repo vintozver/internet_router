@@ -16,6 +16,7 @@ setup(
     entry_points={
         'console_scripts': [
             'internet_router=internet_router.run:service',
+            'internet_router_dhclient4_script=internet_router.script:dhclient4',
             'internet_router_dhclient6_script=internet_router.script:dhclient6',
         ],
     },
