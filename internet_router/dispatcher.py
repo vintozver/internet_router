@@ -189,6 +189,6 @@ class Dispatcher(object):
                         96
                     ))
                 )
-                break
+                return
         # No /64 subnets. No NAT64 therefore
         self.tayga.update(None)
