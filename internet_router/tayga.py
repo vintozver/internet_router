@@ -148,26 +148,33 @@ data-dir {{ data_path }}
             tayga_tun.returncode, tayga_out.decode('utf-8'), tayga_err.decode('utf-8')
         ))
 
-    def update(self, prefix: ipaddress.IPv6Network):
+    def update(self, prefix: ipaddress.IPv6Network=None) -> None:
         self.prefix = prefix
 
-        try:
-            with open(self.conf_file_path, 'r') as conf_file:
-                old_conf = conf_file.read()
-        except OSError:
-            old_conf = ''
+        if self.prefix is not None:
+            try:
+                with open(self.conf_file_path, 'r') as conf_file:
+                    old_conf = conf_file.read()
+            except OSError:
+                old_conf = ''
 
-        new_conf = self.build_config(
-            'nat64',
-            str(prefix),
-            self.conf_file_path
-        )
+            new_conf = self.build_config(
+                'nat64',
+                str(prefix),
+                self.conf_file_path
+            )
 
-        if old_conf != new_conf:
-            open(self.conf_file_path, 'w').write(new_conf)
+            if old_conf != new_conf:
+                open(self.conf_file_path, 'w').write(new_conf)
 
+                self.stop()
+                self.start()
+        else:
             self.stop()
-            self.start()
+            try:
+                os.unlink(self.conf_file_path)
+            except OSError:
+                pass
 
     def shutdown(self):
         self.shutdown_event.set()

@@ -1,6 +1,3 @@
-import sys
-import os
-import os.path
 import pyroute2
 import pyroute2.ipdb
 import logging
@@ -177,15 +174,15 @@ class Dispatcher(object):
                 except KeyError:
                     pass
 
-    @staticmethod
-    def std_stream_dup(prefix, process_stream):  # polling thread
-        system_stdout = sys.stdout
-        while True:
-            try:
-                line = process_stream.readline()
-            except OSError:
+    def update_tayga(self):
+        for prefix in self.my_lan_prefixes:
+            if prefix.prefixlen == 64:
+                self.tayga.update(
+                    ipaddress.IPv6Network((
+                        prefix.network_address.packed[0:8] + b'\xff\xff\xff\xff\x00\x00\x00\x00',
+                        96
+                    ))
+                )
                 break
-            if not line:
-                break
-            system_stdout.write(prefix)
-            system_stdout.write(line.decode('utf-8'))
+        # No /64 subnets. No NAT64 therefore
+        self.tayga.update(None)
