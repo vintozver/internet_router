@@ -88,9 +88,9 @@ data-dir {{ data_path }}
         ))
 
         tayga_iptc_rule = iptc.Rule()
-        tayga_iptc_rule.src = '192.168.255.0/24'
-        tayga_iptc_rule.target = iptc.Target(tayga_iptc_rule, 'MASQUERADE')
-        iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule()
+        tayga_iptc_rule.src = '192.168.255.0/255.255.255.0'
+        tayga_iptc_rule.create_target('MASQUERADE')
+        iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(tayga_iptc_rule)
 
         try:
             with pyroute2.IPRoute() as netlink_route:
@@ -149,7 +149,7 @@ data-dir {{ data_path }}
 
         iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
         for iptc_rule in iptc_nat_postrouting.rules:
-            if iptc_rule.src == '192.168.255.0/24' and iptc_rule.target == iptc.Target(iptc_rule, 'MASQUERADE'):
+            if iptc_rule.src == '192.168.255.0/255.255.255.0' and iptc_rule.target.name == 'MASQUERADE':
                 iptc_nat_postrouting.delete_rule(iptc_rule)
                 break
 
