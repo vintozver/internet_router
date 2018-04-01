@@ -7,6 +7,7 @@ import signal
 import jinja2
 import logging
 import ipaddress
+import iptc
 from . import std_stream_dup
 from threading import Thread, Event
 
@@ -86,6 +87,11 @@ data-dir {{ data_path }}
             tayga_tun.returncode, tayga_out.decode('utf-8'), tayga_err.decode('utf-8')
         ))
 
+        tayga_iptc_rule = iptc.Rule()
+        tayga_iptc_rule.src = '192.168.255.0/24'
+        tayga_iptc_rule.target = iptc.Target(tayga_iptc_rule, 'MASQUERADE')
+        iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule()
+
         try:
             with pyroute2.IPRoute() as netlink_route:
                 idx = netlink_route.link_lookup(ifname='nat64')[0]
@@ -140,6 +146,12 @@ data-dir {{ data_path }}
         self.process.wait()
         self.process = None
         logging.info('tayga stopped')
+
+        iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
+        for iptc_rule in iptc_nat_postrouting.rules:
+            if iptc_rule.src == '192.168.255.0/24' and iptc_rule.target == iptc.Target(iptc_rule, 'MASQUERADE'):
+                iptc_nat_postrouting.delete_rule(iptc_rule)
+                break
 
         logging.debug('tayga tunnel deleting ...')
         tayga_tun = subprocess.Popen(
