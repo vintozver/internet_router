@@ -9,6 +9,10 @@ from threading import Lock
 
 
 class Dispatcher(object):
+    # Every <net>/64 subnet will have by default
+    # <net>.1 - default gateway
+    # <net>.2 - service address for the NAT64 translator
+
     def __init__(self, wan_interface, lan_interface, state_dir):
         self.wan_dhclient6 = WanDhcpClient6(state_dir, wan_interface, self.handle_dhclient6_command)
         self.lan_radvd = LanRadvdManager(state_dir, lan_interface)
@@ -183,12 +187,7 @@ class Dispatcher(object):
     def update_tayga(self):
         for prefix in self.my_lan_prefixes:
             if prefix.prefixlen == 64:
-                self.tayga.update(
-                    ipaddress.IPv6Network((
-                        prefix.network_address.packed[0:8] + b'\xff\xff\xff\xff\x00\x00\x00\x00',
-                        96
-                    ))
-                )
+                self.tayga.update(prefix[2])  # get the ...2 address in the network
                 return
         # No /64 subnets. No NAT64 therefore
         self.tayga.update(None)

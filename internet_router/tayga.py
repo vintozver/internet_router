@@ -11,43 +11,25 @@ import iptc
 from . import std_stream_dup
 from threading import Thread, Event
 
-'''
-start_server() {
-    if [ "$CONFIGURE_IFACE" = "yes" ] ; then
-                "$DAEMON" --mktun | logger -t "$NAME" -i
-                ip link set "$TUN_DEVICE" up
-                [ -n "$DYNAMIC_POOL" ] && ip route add "$DYNAMIC_POOL" dev "$TUN_DEVICE"
-                [ -n "$IPV6_PREFIX" ] && ip route add "$IPV6_PREFIX" dev "$TUN_DEVICE"
-                [ -n "$IPV4_TUN_ADDR" ] && ip addr add "$IPV4_TUN_ADDR" dev "$TUN_DEVICE"
-                [ -n "$IPV6_TUN_ADDR" ] && ip addr add "$IPV6_TUN_ADDR" dev "$TUN_DEVICE"
-    fi
-    iptables -t nat -A POSTROUTING -s "$DYNAMIC_POOL" -j MASQUERADE || true
-}
-
-stop_server() {
-        if [ "$CONFIGURE_IFACE" = "yes" ] ; then
-                ip link set "$TUN_DEVICE" down
-                "$DAEMON" --rmtun | logger -t "$NAME" -i
-        fi
-        iptables -t nat -D POSTROUTING -s "$DYNAMIC_POOL" -j MASQUERADE || true
-}
-'''
-
 
 class TaygaManager(object):
     """NAT64 translator"""
 
     CONFIG_TMPL = '''
-tun-device {{ iface }}
+tun-device {{ interface }}
+prefix 64:ff9b::/96
+ipv6-addr {{ global_ipv6_addr }}
 ipv4-addr 192.168.255.1
-prefix {{ prefix }}
 dynamic-pool 192.168.255.0/24
 data-dir {{ data_path }}
     '''
 
     @classmethod
-    def build_config(cls, iface: str, prefix: str, data_path: str) -> str:
-        return jinja2.Template(cls.CONFIG_TMPL).render({'iface': iface, 'prefix': prefix, 'data_path': data_path})
+    def build_config(cls, interface: str, global_ipv6_addr: str, data_path: str) -> str:
+        return jinja2.Template(cls.CONFIG_TMPL).render({
+            'interface': interface, 'global_ipv6_addr': global_ipv6_addr,
+            'data_path': data_path
+        })
 
     def __init__(self, state_dir):
         self.store_dir = os.path.join(state_dir, 'tayga')
@@ -64,7 +46,7 @@ data-dir {{ data_path }}
 
         self.shutdown_event = Event()
 
-        self.prefix = None  # type: ipaddress.IPv6Network
+        self.global_ipv6_addr = None  # type: ipaddress.IPv6Address
 
     def start(self):
         if self.process is not None:
@@ -73,8 +55,7 @@ data-dir {{ data_path }}
         if self.shutdown_event.is_set():
             return
 
-        assert self.prefix is not None, 'Prefix must be defined to run the service'
-        assert self.prefix.prefixlen == 96, 'Only /96 subnets are allowed'
+        assert self.global_ipv6_addr is not None, 'Global IPv6 address must be defined to run the service'
 
         logging.debug('tayga tunnel creating ...')
         tayga_tun = subprocess.Popen(
@@ -107,7 +88,7 @@ data-dir {{ data_path }}
                     logging.error('tayga could not set the route. %s' % err.args)
                 # ipv6 route
                 try:
-                    netlink_route.route('add', dst=str(self.prefix), oif=idx)
+                    netlink_route.route('add', dst='64:ff9b::/96', oif=idx)
                 except pyroute2.NetlinkError as err:
                     logging.error('tayga could not set the routes. %s' % err.args)
         except pyroute2.NetlinkError as err:
@@ -164,10 +145,10 @@ data-dir {{ data_path }}
             tayga_tun.returncode, tayga_out.decode('utf-8'), tayga_err.decode('utf-8')
         ))
 
-    def update(self, prefix: ipaddress.IPv6Network=None) -> None:
-        self.prefix = prefix
+    def update(self, global_ipv6_addr: ipaddress.IPv6Address=None) -> None:
+        self.global_ipv6_addr = global_ipv6_addr
 
-        if self.prefix is not None:
+        if self.global_ipv6_addr is not None:
             try:
                 with open(self.conf_file_path, 'r') as conf_file:
                     old_conf = conf_file.read()
@@ -176,7 +157,7 @@ data-dir {{ data_path }}
 
             new_conf = self.build_config(
                 'nat64',
-                str(prefix),
+                str(global_ipv6_addr),
                 self.store_dir
             )
 
