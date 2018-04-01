@@ -14,6 +14,8 @@ interface {{ iface }} {
         AdvValidLifetime {{ prefix['max_life'] }};
     };
     {% endfor %}
+    route ::/0 {
+    };
     {% if rdnss|length > 0 %}
     RDNSS {% for rdnss_item in rdnss %}{{rdnss_item}} {% endfor %}{
     };
