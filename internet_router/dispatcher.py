@@ -62,7 +62,7 @@ class Dispatcher(object):
 
     def shutdown(self):
         with self.lock:
-            for addr in self.my_wan_ip4_addresses:
+            for addr in list(self.my_wan_ip4_addresses.keys()):
                 self.remove_ip4_addr(addr)
             self.wan_dhclient4.shutdown()
             self.wan_dhclient6.shutdown()
