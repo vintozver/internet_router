@@ -249,8 +249,8 @@ class Dispatcher(object):
     def add_ip4_addr(
             self,
             addr: ipaddress.IPv4Address, subnet: ipaddress.IPv4Network, ttl: int,
-            routers: typing.List(ipaddress.IPv4Address),
-            dns: typing.List(ipaddress.IPv4Address),
+            routers: typing.List[ipaddress.IPv4Address],
+            dns: typing.List[ipaddress.IPv4Address],
     ):
         self.my_wan_ip4_addresses[addr] = {
             'subnet': subnet,
