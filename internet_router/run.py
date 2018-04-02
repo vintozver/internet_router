@@ -71,9 +71,10 @@ def service():
             if termination_event.wait(60):
                 logging.info('Event triggered. Shutting down ...')
                 break
-            logging.error('Still working: my WAN addresses: %s, my prefixes: %s, my rdnss: %s' % (
-                dispatcher.my_wan_addresses, dispatcher.my_lan_prefixes, dispatcher.my_rdnss
-            ))
+            logging.error('Status: my WAN ip4 addresses: %s' % dispatcher.my_wan_ip4_addresses)
+            logging.error('Status: my WAN ip6 addresses: %s' % dispatcher.my_wan_addresses)
+            logging.error('Status: my ip6 prefixes: %s' % dispatcher.my_lan_prefixes)
+            logging.error('Status: my ip6 rdnss: %s' % dispatcher.my_rdnss)
         except (InterruptedError, KeyboardInterrupt):
             logging.info('Interrupt received. Shutting down ...')
             break

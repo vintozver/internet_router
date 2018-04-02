@@ -1,5 +1,6 @@
 import pyroute2
 import pyroute2.ipdb
+import iptc
 import logging
 import ipaddress
 from .wan_dhclient import WanDhcpClient6
@@ -14,6 +15,7 @@ class Dispatcher(object):
     # <net>.2 - service address for the NAT64 translator
 
     def __init__(self, wan_interface, lan_interface, state_dir):
+        self.wan_dhclient4 = WanDhcpClient6(state_dir, wan_interface, self.handle_dhclient4_command)
         self.wan_dhclient6 = WanDhcpClient6(state_dir, wan_interface, self.handle_dhclient6_command)
         self.lan_radvd = LanRadvdManager(state_dir, lan_interface)
         self.tayga = TaygaManager(state_dir)
@@ -26,6 +28,7 @@ class Dispatcher(object):
         # lock is necessary, only once interface method may be running at the same time
         self.lock = Lock()
 
+        self.my_wan_ip4_addresses = dict()  # mapping(ip4addr -> dict(subnet:ip4net, routers: list(ip4addr), ttl: int)
         self.my_wan_addresses = list()
         self.my_lan_prefixes = dict()
         self.my_rdnss = set()
@@ -35,6 +38,7 @@ class Dispatcher(object):
 
         with self.lock:
             if name == self.wan_interface:
+                self.wan_dhclient4.start()
                 self.wan_dhclient6.start()
                 self.update_tayga()
             elif name == self.lan_interface:
@@ -48,6 +52,7 @@ class Dispatcher(object):
 
         with self.lock:
             if name == self.wan_interface:
+                self.wan_dhclient4.stop()
                 self.wan_dhclient6.stop()
                 self.update_tayga()
             elif name == self.lan_interface:
@@ -56,6 +61,7 @@ class Dispatcher(object):
 
     def shutdown(self):
         with self.lock:
+            self.wan_dhclient4.shutdown()
             self.wan_dhclient6.shutdown()
             self.lan_radvd.shutdown()
             self.tayga.shutdown()
@@ -183,6 +189,100 @@ class Dispatcher(object):
                     self.my_rdnss.add(rdnss_item)
                 except KeyError:
                     pass
+
+    def handle_dhclient4_command(self, command_obj):
+        logging.info('dhclient4_command received')
+        logging.debug('dhclient4_command: %s' % command_obj)
+
+        try:
+            reason = command_obj['reason']
+        except KeyError:
+            logging.error('dhclient4_command reason missing')
+            return
+
+        with self.lock:
+            if reason in ['PREINIT', 'BOUND', 'RENEW', 'REBIND', 'REBOOT']:
+                self.handle_dhclient4_command_old_ip_address(command_obj)
+                self.handle_dhclient4_command_new_ip_address(command_obj)
+            elif reason in ['EXPIRE', 'FAIL', 'STOP', 'RELEASE']:
+                self.handle_dhclient4_command_old_ip_address(command_obj)
+            else:
+                pass
+
+    def handle_dhclient4_command_old_ip_address(self, command_obj) -> None:
+        old_ip_address = command_obj.get('old_ip_address')
+        if old_ip_address is not None:
+            old_ip_address = ipaddress.IPv4Address(old_ip_address)
+            old_ip_network = ipaddress.IPv4Network(command_obj['old_network_number'], command_obj['old_subnet_mask'])
+            if old_ip_address not in old_ip_network:
+                logging.error('dhclient4_command old ip address is NOT in the same network. No action will be taken.')
+                return
+
+            try:
+                my_wan_ip4_address = self.my_wan_ip4_addresses[old_ip_address]
+            except KeyError:
+                logging.error('dhclient4_command old ip address is NOT in out list. No action will be taken.')
+                return
+
+            try:
+                del self.my_wan_ip4_addresses[old_ip_address]
+            except ValueError:
+                pass
+
+            with pyroute2.IPRoute() as netlink_route:
+                idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
+                try:
+                    netlink_route.addr(
+                        'del',
+                        index=idx, address=str(old_ip_address), prefixlen=old_ip_network.prefixlen
+                    )
+                except pyroute2.NetlinkError:
+                    logging.warning('dhclient4_command could not delete old address')
+
+                if len(my_wan_ip4_address['routers']) > 0:
+                    old_router = my_wan_ip4_address['routers'][0]
+                    try:
+                        netlink_route.route('del', dst='0.0.0.0/0', gateway=str(old_router), oif=idx)
+                    except pyroute2.NetlinkError as err:
+                        logging.warning('dhclient4_command could not add new route, %s' % err.args)
+
+    def handle_dhclient4_command_new_ip_address(self, command_obj) -> None:
+        new_ip_address = command_obj.get('new_ip_address')
+        if new_ip_address is not None:
+            new_ip_address = ipaddress.IPv4Address(new_ip_address)
+            new_ip_network = ipaddress.IPv4Network(command_obj['new_network_number'], command_obj['new_subnet_mask'])
+            if new_ip_address not in new_ip_network:
+                logging.error('dhclient4_command new ip address is NOT in the same network. No action will be taken.')
+                return
+
+            new_routers = [ipaddress.IPv4Address(addr) for addr in command_obj.get('new_subnet_mask', '').split(' ')]
+            lease_time = int(command_obj['new_dhcp_lease_time'])
+
+            self.my_wan_ip4_addresses[new_ip_address] = {
+                'subnet': new_ip_network,
+                'routers': new_routers,
+                'ttl': lease_time,
+            }
+
+            with pyroute2.IPRoute() as netlink_route:
+                idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
+                try:
+                    netlink_route.addr(
+                        'add',
+                        index=idx, address=str(new_ip_address), prefixlen=new_ip_network.prefixlen,
+                        IFA_CACHEINFO={
+                            'ifa_valid': lease_time,
+                        }
+                    )
+                except pyroute2.NetlinkError:
+                    logging.error('dhclient4_command could not add new address')
+
+                if len(new_routers) > 0:
+                    new_router = new_routers[0]
+                    try:
+                        netlink_route.route('add', dst='0.0.0.0/0', gateway=str(new_router), oif=idx)
+                    except pyroute2.NetlinkError as err:
+                        logging.error('dhclient4_command could not add new route, %s' % err.args)
 
     def update_tayga(self):
         for prefix in self.my_lan_prefixes:
