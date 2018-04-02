@@ -256,12 +256,12 @@ class Dispatcher(object):
                 return
 
             new_routers = [ipaddress.IPv4Address(addr) for addr in command_obj.get('new_routers', '').split(' ')]
-            valid_ts = int(command_obj['new_expiry'])
+            ttl = int(command_obj['new_dhcp_lease_time'])
 
             self.my_wan_ip4_addresses[new_ip_address] = {
                 'subnet': new_ip_network,
                 'routers': new_routers,
-                'valid_ts': valid_ts,
+                'ttl': ttl,
             }
 
             with pyroute2.IPRoute() as netlink_route:
@@ -271,7 +271,7 @@ class Dispatcher(object):
                         'add',
                         index=idx, address=str(new_ip_address), prefixlen=new_ip_network.prefixlen,
                         IFA_CACHEINFO={
-                            'ifa_valid': valid_ts,
+                            'ifa_valid': ttl,
                         }
                     )
                 except pyroute2.NetlinkError:
