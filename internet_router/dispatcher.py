@@ -210,58 +210,57 @@ class Dispatcher(object):
                 pass
 
     def handle_dhclient4_command_old_ip_address(self, command_obj) -> None:
-        old_ip_address = command_obj.get('old_ip_address')
-        if old_ip_address is not None:
-            old_ip_address = ipaddress.IPv4Address(old_ip_address)
-            old_ip_network = ipaddress.IPv4Network((command_obj['old_network_number'], command_obj['old_subnet_mask']))
-            if old_ip_address not in old_ip_network:
+        ip_address = command_obj.get('old_ip_address')
+        if ip_address is not None:
+            ip_address = ipaddress.IPv4Address(ip_address)
+            ip_network = ipaddress.IPv4Network((command_obj['old_network_number'], command_obj['old_subnet_mask']))
+            if ip_address not in ip_network:
                 logging.error('dhclient4_command old ip address is NOT in the same network. No action will be taken.')
                 return
 
             try:
-                my_wan_ip4_address = self.my_wan_ip4_addresses[old_ip_address]
+                my_wan_ip4_address = self.my_wan_ip4_addresses[ip_address]
             except KeyError:
                 logging.error('dhclient4_command old ip address is NOT in out list. No action will be taken.')
                 return
 
             try:
-                del self.my_wan_ip4_addresses[old_ip_address]
+                del self.my_wan_ip4_addresses[ip_address]
             except ValueError:
                 pass
 
             with pyroute2.IPRoute() as netlink_route:
                 idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
                 try:
-                    netlink_route.addr(
-                        'del',
-                        index=idx, address=str(old_ip_address), prefixlen=old_ip_network.prefixlen
-                    )
+                    netlink_route.addr('del', index=idx, address=str(ip_address), prefixlen=ip_network.prefixlen)
                 except pyroute2.NetlinkError:
                     logging.warning('dhclient4_command could not delete the address')
 
                 if len(my_wan_ip4_address['routers']) > 0:
-                    old_router = my_wan_ip4_address['routers'][0]
+                    router = my_wan_ip4_address['routers'][0]
                     try:
-                        netlink_route.route('del', dst='0.0.0.0/0', gateway=str(old_router), oif=idx)
+                        netlink_route.route('del', dst='0.0.0.0/0', gateway=str(router), oif=idx)
                     except pyroute2.NetlinkError:
                         logging.warning('dhclient4_command could not delete the route')
 
     def handle_dhclient4_command_new_ip_address(self, command_obj) -> None:
-        new_ip_address = command_obj.get('new_ip_address')
-        if new_ip_address is not None:
-            new_ip_address = ipaddress.IPv4Address(new_ip_address)
-            new_ip_network = ipaddress.IPv4Network((command_obj['new_network_number'], command_obj['new_subnet_mask']))
-            if new_ip_address not in new_ip_network:
+        ip_address = command_obj.get('new_ip_address')
+        if ip_address is not None:
+            ip_address = ipaddress.IPv4Address(ip_address)
+            ip_network = ipaddress.IPv4Network((command_obj['new_network_number'], command_obj['new_subnet_mask']))
+            if ip_address not in ip_network:
                 logging.error('dhclient4_command new ip address is NOT in the same network. No action will be taken.')
                 return
 
-            new_routers = [ipaddress.IPv4Address(addr) for addr in command_obj.get('new_routers', '').split(' ')]
+            routers = [ipaddress.IPv4Address(addr) for addr in command_obj.get('new_routers', '').split(' ')]
+            dns = [ipaddress.IPv4Address(addr) for addr in command_obj.get('new_domain_name_servers', '').split(' ')]
             ttl = int(command_obj['new_dhcp_lease_time'])
 
-            self.my_wan_ip4_addresses[new_ip_address] = {
-                'subnet': new_ip_network,
-                'routers': new_routers,
+            self.my_wan_ip4_addresses[ip_address] = {
+                'subnet': ip_network,
+                'routers': routers,
                 'ttl': ttl,
+                'dns': dns,
             }
 
             with pyroute2.IPRoute() as netlink_route:
@@ -269,7 +268,7 @@ class Dispatcher(object):
                 try:
                     netlink_route.addr(
                         'add',
-                        index=idx, address=str(new_ip_address), prefixlen=new_ip_network.prefixlen,
+                        index=idx, address=str(ip_address), prefixlen=ip_network.prefixlen,
                         IFA_CACHEINFO={
                             'ifa_valid': ttl,
                         }
@@ -277,8 +276,8 @@ class Dispatcher(object):
                 except pyroute2.NetlinkError:
                     logging.error('dhclient4_command could not add a new address')
 
-                if len(new_routers) > 0:
-                    new_router = new_routers[0]
+                if len(routers) > 0:
+                    new_router = routers[0]
                     try:
                         netlink_route.route('add', dst='0.0.0.0/0', gateway=str(new_router), oif=idx)
                     except pyroute2.NetlinkError:
