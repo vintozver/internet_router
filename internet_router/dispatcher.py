@@ -243,12 +243,12 @@ class Dispatcher(object):
                     except pyroute2.NetlinkError:
                         logging.warning('dhclient4_command could not delete the route')
 
-        iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
-        for iptc_rule in iptc_nat_postrouting.rules:
-            if iptc_rule.out_interface == self.wan_interface \
-                    and iptc_rule.target.name == 'SNAT' and iptc_rule.target.to_source == str(ip_address):
-                iptc_nat_postrouting.delete_rule(iptc_rule)
-                break
+            iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
+            for iptc_rule in iptc_nat_postrouting.rules:
+                if iptc_rule.out_interface == self.wan_interface \
+                        and iptc_rule.target.name == 'SNAT' and iptc_rule.target.to_source == str(ip_address):
+                    iptc_nat_postrouting.delete_rule(iptc_rule)
+                    break
 
     def handle_dhclient4_command_new_ip_address(self, command_obj) -> None:
         ip_address = command_obj.get('new_ip_address')
@@ -290,11 +290,11 @@ class Dispatcher(object):
                     except pyroute2.NetlinkError:
                         logging.error('dhclient4_command could not add a new route')
 
-        nat_iptc_rule = iptc.Rule()
-        nat_iptc_rule.out_interface = self.wan_interface
-        nat_iptc_target = nat_iptc_rule.create_target('SNAT')
-        nat_iptc_target.to_source = str(ip_address)
-        iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
+            nat_iptc_rule = iptc.Rule()
+            nat_iptc_rule.out_interface = self.wan_interface
+            nat_iptc_target = nat_iptc_rule.create_target('SNAT')
+            nat_iptc_target.to_source = str(ip_address)
+            iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
 
     def update_tayga(self):
         for prefix in self.my_lan_prefixes:
