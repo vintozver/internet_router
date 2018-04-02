@@ -1,3 +1,4 @@
+import typing
 import pyroute2
 import pyroute2.ipdb
 import iptc
@@ -61,6 +62,8 @@ class Dispatcher(object):
 
     def shutdown(self):
         with self.lock:
+            for addr in self.my_wan_ip4_addresses:
+                self.remove_ip4_addr(addr)
             self.wan_dhclient4.shutdown()
             self.wan_dhclient6.shutdown()
             self.lan_radvd.shutdown()
@@ -218,37 +221,7 @@ class Dispatcher(object):
                 logging.error('dhclient4_command old ip address is NOT in the same network. No action will be taken.')
                 return
 
-            try:
-                my_wan_ip4_address = self.my_wan_ip4_addresses[ip_address]
-            except KeyError:
-                logging.error('dhclient4_command old ip address is NOT in out list. No action will be taken.')
-                return
-
-            try:
-                del self.my_wan_ip4_addresses[ip_address]
-            except ValueError:
-                pass
-
-            with pyroute2.IPRoute() as netlink_route:
-                idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
-                try:
-                    netlink_route.addr('del', index=idx, address=str(ip_address), prefixlen=ip_network.prefixlen)
-                except pyroute2.NetlinkError:
-                    logging.warning('dhclient4_command could not delete the address')
-
-                if len(my_wan_ip4_address['routers']) > 0:
-                    router = my_wan_ip4_address['routers'][0]
-                    try:
-                        netlink_route.route('del', dst='0.0.0.0/0', gateway=str(router), oif=idx)
-                    except pyroute2.NetlinkError:
-                        logging.warning('dhclient4_command could not delete the route')
-
-            iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
-            for iptc_rule in iptc_nat_postrouting.rules:
-                if iptc_rule.out_interface == self.wan_interface \
-                        and iptc_rule.target.name == 'SNAT' and iptc_rule.target.to_source == str(ip_address):
-                    iptc_nat_postrouting.delete_rule(iptc_rule)
-                    break
+            self.remove_ip4_addr(ip_address)
 
     def handle_dhclient4_command_new_ip_address(self, command_obj) -> None:
         ip_address = command_obj.get('new_ip_address')
@@ -259,42 +232,11 @@ class Dispatcher(object):
                 logging.error('dhclient4_command new ip address is NOT in the same network. No action will be taken.')
                 return
 
+            ttl = int(command_obj['new_dhcp_lease_time'])
             routers = [ipaddress.IPv4Address(addr) for addr in command_obj.get('new_routers', '').split(' ')]
             dns = [ipaddress.IPv4Address(addr) for addr in command_obj.get('new_domain_name_servers', '').split(' ')]
-            ttl = int(command_obj['new_dhcp_lease_time'])
 
-            self.my_wan_ip4_addresses[ip_address] = {
-                'subnet': ip_network,
-                'routers': routers,
-                'ttl': ttl,
-                'dns': dns,
-            }
-
-            with pyroute2.IPRoute() as netlink_route:
-                idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
-                try:
-                    netlink_route.addr(
-                        'add',
-                        index=idx, address=str(ip_address), prefixlen=ip_network.prefixlen,
-                        IFA_CACHEINFO={
-                            'ifa_valid': ttl,
-                        }
-                    )
-                except pyroute2.NetlinkError:
-                    logging.error('dhclient4_command could not add a new address')
-
-                if len(routers) > 0:
-                    new_router = routers[0]
-                    try:
-                        netlink_route.route('add', dst='0.0.0.0/0', gateway=str(new_router), oif=idx)
-                    except pyroute2.NetlinkError:
-                        logging.error('dhclient4_command could not add a new route')
-
-            nat_iptc_rule = iptc.Rule()
-            nat_iptc_rule.out_interface = self.wan_interface
-            nat_iptc_target = nat_iptc_rule.create_target('SNAT')
-            nat_iptc_target.to_source = str(ip_address)
-            iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
+            self.add_ip4_addr(ip_address, ip_network, ttl, routers, dns)
 
     def update_tayga(self):
         for prefix in self.my_lan_prefixes:
@@ -303,3 +245,74 @@ class Dispatcher(object):
                 return
         # No /64 subnets. No NAT64 therefore
         self.tayga.update(None)
+
+    def add_ip4_addr(
+            self,
+            addr: ipaddress.IPv4Address, subnet: ipaddress.IPv4Network, ttl: int,
+            routers: typing.List(ipaddress.IPv4Address),
+            dns: typing.List(ipaddress.IPv4Address),
+    ):
+        self.my_wan_ip4_addresses[addr] = {
+            'subnet': subnet,
+            'routers': routers,
+            'ttl': ttl,
+            'dns': dns,
+        }
+
+        with pyroute2.IPRoute() as netlink_route:
+            idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
+            try:
+                netlink_route.addr(
+                    'add',
+                    index=idx, address=str(addr), prefixlen=subnet.prefixlen,
+                    IFA_CACHEINFO={
+                        'ifa_valid': ttl,
+                    }
+                )
+            except pyroute2.NetlinkError:
+                logging.error('dhclient4_command could not add a new address')
+
+            if len(routers) > 0:
+                new_router = routers[0]
+                try:
+                    netlink_route.route('add', dst='0.0.0.0/0', gateway=str(new_router), oif=idx)
+                except pyroute2.NetlinkError:
+                    logging.error('dhclient4_command could not add a new route')
+
+        nat_iptc_rule = iptc.Rule()
+        nat_iptc_rule.out_interface = self.wan_interface
+        nat_iptc_target = nat_iptc_rule.create_target('SNAT')
+        nat_iptc_target.to_source = str(addr)
+        iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
+
+    def remove_ip4_addr(self, addr: ipaddress.IPv4Address):
+        try:
+            my_wan_ip4_address = self.my_wan_ip4_addresses[addr]
+        except KeyError:
+            logging.error('clean_ip4_addr: old ip address is NOT in out list. No action will be taken.')
+            return
+
+        del self.my_wan_ip4_addresses[addr]
+
+        ip_network = my_wan_ip4_address['subnet']
+
+        with pyroute2.IPRoute() as netlink_route:
+            idx = netlink_route.link_lookup(ifname=self.wan_interface)[0]
+            try:
+                netlink_route.addr('del', index=idx, address=str(addr), prefixlen=ip_network.prefixlen)
+            except pyroute2.NetlinkError:
+                logging.warning('clean_ip4_addr: could not delete the address')
+
+            if len(my_wan_ip4_address['routers']) > 0:
+                router = my_wan_ip4_address['routers'][0]
+                try:
+                    netlink_route.route('del', dst='0.0.0.0/0', gateway=str(router), oif=idx)
+                except pyroute2.NetlinkError:
+                    logging.warning('clean_ip4_addr: could not delete the route')
+
+        iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
+        for iptc_rule in iptc_nat_postrouting.rules:
+            if iptc_rule.out_interface == self.wan_interface \
+                    and iptc_rule.target.name == 'SNAT' and iptc_rule.target.to_source == str(addr):
+                iptc_nat_postrouting.delete_rule(iptc_rule)
+                break
