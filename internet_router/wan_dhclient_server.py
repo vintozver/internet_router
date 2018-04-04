@@ -18,6 +18,12 @@ class CommandServer(socketserver.UnixStreamServer):
 
         self.callback = callback
 
+        # cleanup the socket file before listening
+        try:
+            os.unlink(socket_filename)
+        except OSError:
+            pass
+
         super(CommandServer, self).__init__(socket_filename, CommandHandler)
 
     def shutdown(self):
