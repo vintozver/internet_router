@@ -78,7 +78,7 @@ data-dir {{ data_path }}
                 idx = netlink_route.link_lookup(ifname='nat64')[0]
                 # link up
                 try:
-                    netlink_route.link_up(idx)
+                    netlink_route.link('set', index=idx, state='up')
                 except pyroute2.NetlinkError as err:
                     logging.error('tayga could not set the link. %s' % err.args)
                 # ipv4 route
