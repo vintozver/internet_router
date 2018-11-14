@@ -1,3 +1,4 @@
+import socket
 import socketserver
 import os
 import logging
@@ -18,11 +19,15 @@ class CommandServer(socketserver.UnixStreamServer):
 
         self.callback = callback
 
-        # cleanup the socket file before listening
-        try:
-            os.unlink(socket_filename)
-        except OSError:
-            pass
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as test_socket:
+            try:
+                test_socket.connect(socket_filename)
+                raise RuntimeError('Socket is open by another program')
+            except socket.error:
+                try:
+                    os.unlink(socket_filename)
+                except OSError:
+                    pass
 
         super(CommandServer, self).__init__(socket_filename, CommandHandler)
 
@@ -40,6 +45,8 @@ class CommandHandler(socketserver.BaseRequestHandler):
         logging.info('wan_dhclient_server incoming command')
 
         command_bytes = self.request.recv(4096)
+        if len(command_bytes) == 0:
+            return
         command_obj = None
         try:
             command_obj = json.loads(command_bytes.decode('utf-8'))
