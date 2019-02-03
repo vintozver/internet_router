@@ -15,7 +15,7 @@ class IscBindManager(object):
 
     CONFIG_TMPL = '''
 options {
-    directory {{ working }};
+    directory {{ working_dir }};
     pid-file none;
 
     //========================================================================
@@ -120,8 +120,7 @@ view clients-ipv6 {
             os.mkdir(self.store_dir)
         except OSError:
             pass
-        self.conf_file_path = os.path.join(state_dir, 'named.conf')
-        self.pid_file_path = os.path.join(state_dir, 'named.pid')
+        self.conf_file_path = os.path.join(self.store_dir, 'named.conf')
 
         self.process = None
         self.thread_stdout = None  # stdout polling thread
@@ -129,8 +128,8 @@ view clients-ipv6 {
 
         self.shutdown_event = Event()
 
-        self.clients_ipv4 = []  # type: typing.List[ipaddress.IPv4Network]
-        self.clients_ipv6 = []  # type: typing.List[ipaddress.IPv6Network]
+        self.clients_ipv4 = list()  # type: typing.List[ipaddress.IPv4Network]
+        self.clients_ipv6 = list()  # type: typing.List[ipaddress.IPv6Network]
 
     def start(self):
         if self.process is not None:
