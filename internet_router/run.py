@@ -72,7 +72,7 @@ def service():
                 logging.info('Event triggered. Shutting down ...')
                 break
             logging.error('Status: my WAN ip4 addresses: %s' % dispatcher.my_wan_ip4_addresses)
-            logging.error('Status: my WAN ip6 addresses: %s' % dispatcher.my_wan_addresses)
+            logging.error('Status: my WAN ip6 addresses: %s' % dispatcher.my_wan_ip6_addresses)
             logging.error('Status: my ip6 prefixes: %s' % dispatcher.my_lan_prefixes)
             logging.error('Status: my ip6 rdnss: %s' % dispatcher.my_rdnss)
         except (InterruptedError, KeyboardInterrupt):

@@ -7,6 +7,7 @@ import ipaddress
 from .wan_dhclient import WanDhcpClient4, WanDhcpClient6
 from .lan_radvd import LanRadvdManager
 from .tayga import TaygaManager
+from .isc_bind import IscBindManager
 from threading import Lock
 
 
@@ -20,6 +21,7 @@ class Dispatcher(object):
         self.wan_dhclient6 = WanDhcpClient6(state_dir, wan_interface, self.handle_dhclient6_command)
         self.lan_radvd = LanRadvdManager(state_dir, lan_interface)
         self.tayga = TaygaManager(state_dir)
+        self.isc_bind = IscBindManager(state_dir)
 
         self.wan_interface = wan_interface
         self.lan_interface = lan_interface
@@ -30,7 +32,7 @@ class Dispatcher(object):
         self.lock = Lock()
 
         self.my_wan_ip4_addresses = dict()  # mapping(ip4addr -> dict(subnet:ip4net, routers: list(ip4addr), ttl: int)
-        self.my_wan_addresses = list()
+        self.my_wan_ip6_addresses = list()
         self.my_lan_prefixes = dict()
         self.my_rdnss = set()
 
@@ -42,9 +44,12 @@ class Dispatcher(object):
                 self.wan_dhclient4.start()
                 self.wan_dhclient6.start()
                 self.update_tayga()
-            elif name == self.lan_interface:
-                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
                 self.update_tayga()
+                self.update_isc_bind()
+            elif name == self.lan_interface:
+                self.lan_radvd.update(self.my_lan_prefixes, set(ip6_net[1] for ip6_net in self.my_lan_prefixes.keys()))
+                self.update_tayga()
+                self.update_isc_bind()
             else:
                 pass
 
@@ -56,9 +61,11 @@ class Dispatcher(object):
                 self.wan_dhclient4.stop()
                 self.wan_dhclient6.stop()
                 self.update_tayga()
+                self.update_isc_bind()
             elif name == self.lan_interface:
-                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
+                self.lan_radvd.update(self.my_lan_prefixes, set(ip6_net[1] for ip6_net in self.my_lan_prefixes.keys()))
                 self.update_tayga()
+                self.update_isc_bind()
 
     def shutdown(self):
         with self.lock:
@@ -68,6 +75,7 @@ class Dispatcher(object):
             self.wan_dhclient6.shutdown()
             self.lan_radvd.shutdown()
             self.tayga.shutdown()
+            self.isc_bind.shutdown()
 
     def handle_dhclient6_command(self, command_obj):
         logging.info('dhclient6_command received')
@@ -103,7 +111,7 @@ class Dispatcher(object):
         if old_ip6_address is not None:
             old_ip6_prefixlen = int(command_obj['old_ip6_prefixlen'])
             try:
-                self.my_wan_addresses.remove((old_ip6_address, old_ip6_prefixlen))
+                self.my_wan_ip6_addresses.remove((old_ip6_address, old_ip6_prefixlen))
             except ValueError:
                 pass
 
@@ -118,7 +126,7 @@ class Dispatcher(object):
         new_ip6_address = command_obj.get('new_ip6_address')
         if new_ip6_address is not None:
             new_ip6_prefixlen = int(command_obj['new_ip6_prefixlen'])
-            self.my_wan_addresses.append((new_ip6_address, new_ip6_prefixlen, ))
+            self.my_wan_ip6_addresses.append((new_ip6_address, new_ip6_prefixlen))
 
             new_preferred_life = int(command_obj['new_preferred_life'])
             new_max_life = int(command_obj['new_max_life'])
@@ -245,6 +253,13 @@ class Dispatcher(object):
                 return
         # No /64 subnets. No NAT64 therefore
         self.tayga.update(None)
+
+    def update_isc_bind(self):
+        clients_ipv4 = list(ipaddress.IPv4Network(ip4_addr) for ip4_addr in self.my_wan_ip4_addresses.keys())
+        clients_ipv6 = \
+            list(ipaddress.IPv6Network(ip6_addr[0]) for ip6_addr in self.my_wan_ip6_addresses) + \
+            list(self.my_lan_prefixes.keys())
+        self.isc_bind.update(clients_ipv4=clients_ipv4, clients_ipv6=clients_ipv6)
 
     def add_ip4_addr(
             self,
