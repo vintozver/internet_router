@@ -31,14 +31,13 @@ options {
 
 view clients-ipv4 {
     match-clients {
-        73.118.186.166/32;
-        {%- for client_ipv4 in clients_ipv4 %}
+        {% for client_ipv4 in clients_ipv4 -%}
         {{ client_ipv4 }};
-        {% endfor -%}
+        {%- endfor %}
     };
     match-recursive-only yes;
     forwarders {
-        {%- for forwarder_ipv4 in forwardes_ipv4 %}
+        {%- for forwarder_ipv4 in forwarders_ipv4 %}
         {{ forwarder_ipv4 }};
         {% endfor -%}
     };
@@ -77,15 +76,13 @@ view clients-ipv4 {
 
 view clients-ipv6 {
     match-clients {
-        2001:558:600a:9e:2dde:f61a:dec6:15bf/128;
-        2601:601:1800:dd4e::/64;
-        {%- for client_ipv6 in clients_ipv6 %}
+        {% for client_ipv6 in clients_ipv6 -%}
         {{ client_ipv6 }};
-        {% endfor -%}
+        {%- endfor %}
     };
     match-recursive-only yes;
     forwarders {
-        {%- for forwarder_ipv6 in forwardes_ipv6 %}
+        {%- for forwarder_ipv6 in forwarders_ipv6 %}
         {{ forwarder_ipv6 }};
         {% endfor -%}
     };
