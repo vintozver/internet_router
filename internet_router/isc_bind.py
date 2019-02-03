@@ -15,7 +15,7 @@ class IscBindManager(object):
 
     CONFIG_TMPL = '''
 options {
-    directory {{ working_dir }};
+    directory "{{ working_dir }}";
     pid-file none;
 
     //========================================================================

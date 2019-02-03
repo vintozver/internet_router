@@ -44,10 +44,9 @@ class Dispatcher(object):
                 self.wan_dhclient4.start()
                 self.wan_dhclient6.start()
                 self.update_tayga()
-                self.update_tayga()
                 self.update_isc_bind()
             elif name == self.lan_interface:
-                self.lan_radvd.update(self.my_lan_prefixes, set(ip6_net[1] for ip6_net in self.my_lan_prefixes.keys()))
+                self.update_lan_radvd()
                 self.update_tayga()
                 self.update_isc_bind()
             else:
@@ -63,7 +62,7 @@ class Dispatcher(object):
                 self.update_tayga()
                 self.update_isc_bind()
             elif name == self.lan_interface:
-                self.lan_radvd.update(self.my_lan_prefixes, set(ip6_net[1] for ip6_net in self.my_lan_prefixes.keys()))
+                self.update_lan_radvd()
                 self.update_tayga()
                 self.update_isc_bind()
 
@@ -95,13 +94,13 @@ class Dispatcher(object):
                 self.handle_dhclient6_command_new_ip6_address(command_obj)
                 self.handle_dhclient6_command_new_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_new_ip6_rdnss(command_obj)
-                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
+                self.update_lan_radvd()
                 self.update_tayga()
             elif reason in ['EXPIRE6', 'FAIL6', 'STOP6', 'RELEASE6']:
                 self.handle_dhclient6_command_old_ip6_rdnss(command_obj)
                 self.handle_dhclient6_command_old_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
-                self.lan_radvd.update(self.my_lan_prefixes, self.my_rdnss)
+                self.update_lan_radvd()
                 self.update_tayga()
             else:
                 pass
@@ -253,6 +252,9 @@ class Dispatcher(object):
                 return
         # No /64 subnets. No NAT64 therefore
         self.tayga.update(None)
+
+    def update_lan_radvd(self):
+        self.lan_radvd.update(self.my_lan_prefixes, set(ip6_net[1] for ip6_net in self.my_lan_prefixes.keys()))
 
     def update_isc_bind(self):
         clients_ipv4 = list(ipaddress.IPv4Network(ip4_addr) for ip4_addr in self.my_wan_ip4_addresses.keys())
