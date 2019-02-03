@@ -31,15 +31,15 @@ options {
 
 view clients-ipv4 {
     match-clients {
-        {% for client_ipv4 in clients_ipv4 -%}
+        {% for client_ipv4 in clients_ipv4 %}
         {{ client_ipv4 }};
         {%- endfor %}
     };
     match-recursive-only yes;
     forwarders {
-        {%- for forwarder_ipv4 in forwarders_ipv4 %}
+        {% for forwarder_ipv4 in forwarders_ipv4 %}
         {{ forwarder_ipv4 }};
-        {% endfor -%}
+        {%- endfor %}
     };
 
     // prime the server with knowledge of the root servers
@@ -76,15 +76,15 @@ view clients-ipv4 {
 
 view clients-ipv6 {
     match-clients {
-        {% for client_ipv6 in clients_ipv6 -%}
+        {% for client_ipv6 in clients_ipv6 %}
         {{ client_ipv6 }};
         {%- endfor %}
     };
     match-recursive-only yes;
     forwarders {
-        {%- for forwarder_ipv6 in forwarders_ipv6 %}
+        {% for forwarder_ipv6 in forwarders_ipv6 %}
         {{ forwarder_ipv6 }};
-        {% endfor -%}
+        {%- endfor %}
     };
 
     zone "." {
