@@ -15,7 +15,8 @@ class IscBindManager(object):
 
     CONFIG_TMPL = '''
 options {
-    directory "/var/cache/bind";
+    directory {{ working }};
+    pid-file none;
 
     //========================================================================
     // If BIND logs error messages about the root key being expired,
