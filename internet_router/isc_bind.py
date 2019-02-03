@@ -129,8 +129,8 @@ view clients-ipv6 {
 
         self.shutdown_event = Event()
 
-        self.clients_ipv4: typing.List[ipaddress.IPv4Network] = []
-        self.clients_ipv6: typing.List[ipaddress.IPv6Network] = []
+        self.clients_ipv4 = []  # type: typing.List[ipaddress.IPv4Network]
+        self.clients_ipv6 = []  # type: typing.List[ipaddress.IPv6Network]
 
     def start(self):
         if self.process is not None:
