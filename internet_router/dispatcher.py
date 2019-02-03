@@ -96,12 +96,14 @@ class Dispatcher(object):
                 self.handle_dhclient6_command_new_ip6_rdnss(command_obj)
                 self.update_lan_radvd()
                 self.update_tayga()
+                self.update_isc_bind()
             elif reason in ['EXPIRE6', 'FAIL6', 'STOP6', 'RELEASE6']:
                 self.handle_dhclient6_command_old_ip6_rdnss(command_obj)
                 self.handle_dhclient6_command_old_ip6_prefix(command_obj)
                 self.handle_dhclient6_command_old_ip6_address(command_obj)
                 self.update_lan_radvd()
                 self.update_tayga()
+                self.update_isc_bind()
             else:
                 pass
 
@@ -214,8 +216,10 @@ class Dispatcher(object):
             if reason in ['PREINIT', 'BOUND', 'RENEW', 'REBIND', 'REBOOT']:
                 self.handle_dhclient4_command_old_ip_address(command_obj)
                 self.handle_dhclient4_command_new_ip_address(command_obj)
+                self.update_isc_bind()
             elif reason in ['EXPIRE', 'FAIL', 'STOP', 'RELEASE']:
                 self.handle_dhclient4_command_old_ip_address(command_obj)
+                self.update_isc_bind()
             else:
                 pass
 
