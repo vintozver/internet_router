@@ -129,9 +129,11 @@ class Dispatcher(BaseDispatcher):
 
     def update_isc_bind(self):
         clients_ipv4 = list()
-        clients_ipv4.append(ipaddress.IPv4Network(self.my_wan_ip4_address))
+        if self.my_wan_ip4_address is not None:
+            clients_ipv4.append(ipaddress.IPv4Network(self.my_wan_ip4_address))
         clients_ipv6 = list()
-        clients_ipv6.append(self.my_wan_ip6_prefix)
+        if self.my_wan_ip6_prefix is not None:
+            clients_ipv6.append(self.my_wan_ip6_prefix)
         self.isc_bind.update(clients_ipv4=clients_ipv4, clients_ipv6=clients_ipv6)
 
     def add_ip4_addr(self, addr: ipaddress.IPv4Address):
