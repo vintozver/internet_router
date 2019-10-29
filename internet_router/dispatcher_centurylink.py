@@ -84,9 +84,9 @@ class Dispatcher(BaseDispatcher):
             self.isc_bind.shutdown()
 
     def status(self) -> None:
-        logging.info('Status: my WAN ip4 address: %s' % self.my_wan_ip4_address)
-        logging.info('Status: my WAN ip6 prefix: %s' % self.my_wan_ip6_prefix)
-        logging.info('Status: my LAN ip6 prefixes: %s' % self.my_lan_ip6_prefix)
+        logging.debug('Status: my WAN ip4 address: %s' % self.my_wan_ip4_address)
+        logging.debug('Status: my WAN ip6 prefix: %s' % self.my_wan_ip6_prefix)
+        logging.debug('Status: my LAN ip6 prefixes: %s' % self.my_lan_ip6_prefix)
 
     def handle_pppd_command(self, action: str, parameters: typing.Mapping, environ: typing.Mapping) -> None:
         if parameters['interface-name'] == self.pppd_client.ifname:
