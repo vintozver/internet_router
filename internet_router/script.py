@@ -52,32 +52,32 @@ def pppd():
     logging.info('pppd_script invoked, state_dir: %s' % state_dir)
 
     command = dict()
-    action = sys.argv[1]
+    action = sys.argv[2]
     command['action'] = action
     parameters = dict()
     if action in ('ip-pre-up', 'ip-up', 'ip-down'):
         # interface-name tty-device speed local-IP-address remote-IP-address ipparam
-        parameters['interface-name'] = sys.argv[2]
-        parameters['tty-device'] = sys.argv[3]
-        parameters['speed'] = sys.argv[4]
-        parameters['local-IP-address'] = sys.argv[5]
-        parameters['remote-IP-address'] = sys.argv[6]
-        parameters['ipparam'] = sys.argv[7]
+        parameters['interface-name'] = sys.argv[3]
+        parameters['tty-device'] = sys.argv[4]
+        parameters['speed'] = sys.argv[5]
+        parameters['local-IP-address'] = sys.argv[6]
+        parameters['remote-IP-address'] = sys.argv[7]
+        parameters['ipparam'] = sys.argv[8]
     elif action in ('auth-up', 'auth-down'):
         # interface-name peer-name user-name tty-device speed
-        parameters['interface-name'] = sys.argv[2]
-        parameters['peer-name'] = sys.argv[3]
-        parameters['user-name'] = sys.argv[4]
-        parameters['tty-device'] = sys.argv[5]
-        parameters['speed'] = sys.argv[6]
+        parameters['interface-name'] = sys.argv[3]
+        parameters['peer-name'] = sys.argv[4]
+        parameters['user-name'] = sys.argv[5]
+        parameters['tty-device'] = sys.argv[6]
+        parameters['speed'] = sys.argv[7]
     elif action in ('ipv6-up', 'ipv6-down'):
         # interface-name tty-device speed local-link-local-address remote-link-local-address ipparam
-        parameters['interface-name'] = sys.argv[2]
-        parameters['tty-device'] = sys.argv[3]
-        parameters['speed'] = sys.argv[4]
-        parameters['local-link-local-address'] = sys.argv[5]
-        parameters['remote-link-local-address'] = sys.argv[6]
-        parameters['ipparam'] = sys.argv[7]
+        parameters['interface-name'] = sys.argv[3]
+        parameters['tty-device'] = sys.argv[4]
+        parameters['speed'] = sys.argv[5]
+        parameters['local-link-local-address'] = sys.argv[6]
+        parameters['remote-link-local-address'] = sys.argv[7]
+        parameters['ipparam'] = sys.argv[8]
     else:
         raise RuntimeError('action value is unexpected', action)
     command['parameters'] = parameters
