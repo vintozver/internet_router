@@ -89,7 +89,7 @@ class Dispatcher(BaseDispatcher):
         logging.info('Status: my LAN ip6 prefixes: %s' % self.my_lan_ip6_prefix)
 
     def handle_pppd_command(self, action: str, parameters: typing.Mapping, environ: typing.Mapping) -> None:
-        if environ['IFNAME'] == self.pppd_client.ifname:
+        if parameters['interface-name'] == self.pppd_client.ifname:
             with self.lock:
                 if action == 'ip-up':
                     self.handle_pppd_ip_up(parameters, environ)
