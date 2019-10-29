@@ -175,7 +175,7 @@ class Dispatcher(BaseDispatcher):
                 address=str(self.my_lan_ip6_prefix[1]),
                 prefixlen=self.my_lan_ip6_prefix.prefixlen,
                 IFA_CACHEINFO={
-                    'ifa_prefered': 0xffffffff,  # forever
+                    'ifa_preferred': 0xffffffff,  # forever
                     'ifa_valid': 0xffffffff,  # forever
                 }
             )
