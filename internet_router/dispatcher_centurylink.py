@@ -64,6 +64,8 @@ class Dispatcher(BaseDispatcher):
 
         with self.lock:
             if name == self.link_interface:
+                if self.my_wan_ip4_address is not None:
+                    self.remove_ip4_addr(self.my_wan_ip4_address)
                 self.pppd_client.stop()
                 self.update_tayga()
                 self.update_isc_bind()
@@ -142,6 +144,7 @@ class Dispatcher(BaseDispatcher):
         my_lan_ip6_prefix_gen = self.my_wan_ip6_prefix.subnets(128 - 64 - self.my_wan_ip6_prefix.prefixlen)
         self.my_lan_ip6_prefix = next(my_lan_ip6_prefix_gen)
 
+        # add default route
         with pyroute2.IPRoute() as netlink_route:
             idx = netlink_route.link_lookup(ifname=self.pppd_client.ifname)[0]
 
@@ -150,11 +153,27 @@ class Dispatcher(BaseDispatcher):
             except pyroute2.NetlinkError:
                 logging.error('dispatcher_centurylink could not add a new route')
 
+        # add WAN NAT translation
         nat_iptc_rule = iptc.Rule()
         nat_iptc_rule.out_interface = self.pppd_client.ifname
         nat_iptc_target = nat_iptc_rule.create_target('SNAT')
         nat_iptc_target.to_source = str(addr)
         iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
+
+        # add LAN subnet
+        with pyroute2.IPRoute() as netlink_route:
+            idx = netlink_route.link_lookup(ifname=self.lan_interface)[0]
+
+            netlink_route.addr(
+                'add',
+                index=idx,
+                address=str(self.my_lan_ip6_prefix[1]),
+                prefixlen=self.my_lan_ip6_prefix.prefixlen,
+                IFA_CACHEINFO={
+                    'ifa_prefered': 0xffffffff,  # forever
+                    'ifa_valid': 0xffffffff,  # forever
+                }
+            )
 
     def remove_ip4_addr(self, addr: ipaddress.IPv4Address):
         if self.my_wan_ip4_address != addr:
@@ -162,14 +181,21 @@ class Dispatcher(BaseDispatcher):
 current WAN ip4 address does not match the requested "%s"' % str(addr))
             return
 
+        # remove LAN subnet
         with pyroute2.IPRoute() as netlink_route:
-            idx = netlink_route.link_lookup(ifname=self.pppd_client.ifname)[0]
+            idx = netlink_route.link_lookup(ifname=self.lan_interface)[0]
 
             try:
-                netlink_route.route('del', dst='0.0.0.0/0', oif=idx)
+                netlink_route.addr(
+                    'del',
+                    index=idx,
+                    address=str(self.my_lan_ip6_prefix[1]),
+                    prefixlen=self.my_lan_ip6_prefix.prefixlen,
+                )
             except pyroute2.NetlinkError:
-                logging.warning('dispatcher_centurylink could not delete the route')
+                logging.error('dispatcher_centurylink: could not delete the address')
 
+        # remove WAN NAT translation
         iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
         for iptc_rule in iptc_nat_postrouting.rules:
             if iptc_rule.out_interface == self.pppd_client.ifname \
@@ -177,4 +203,15 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
                 iptc_nat_postrouting.delete_rule(iptc_rule)
                 break
 
+        # remove default route
+        with pyroute2.IPRoute() as netlink_route:
+            idx = netlink_route.link_lookup(ifname=self.pppd_client.ifname)[0]
+
+            try:
+                netlink_route.route('del', dst='0.0.0.0/0', oif=idx)
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink could not delete the route')
+
         self.my_wan_ip4_address = None
+        self.my_wan_ip6_prefix = None
+        self.my_lan_ip6_prefix = None
