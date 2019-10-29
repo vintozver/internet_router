@@ -89,7 +89,7 @@ class Dispatcher(BaseDispatcher):
         logging.debug('Status: my LAN ip6 prefixes: %s' % self.my_lan_ip6_prefix)
 
     def handle_pppd_command(self, action: str, parameters: typing.Mapping, environ: typing.Mapping) -> None:
-        if parameters['interface-name'] == self.pppd_client.ifname:
+        if environ['IFNAME'] == self.pppd_client.ifname:
             with self.lock:
                 if action == 'ip-up':
                     self.handle_pppd_ip_up(parameters, environ)
@@ -105,11 +105,11 @@ class Dispatcher(BaseDispatcher):
                     logging.info('Dispatcher received pppd command: %s' % action)
 
     def handle_pppd_ip_up(self, parameters: typing.Mapping, environ: typing.Mapping) -> None:
-        local_ip_address = ipaddress.IPv4Address(parameters['local-IP-address'])
+        local_ip_address = ipaddress.IPv4Address(environ['IPLOCAL'])
         self.add_ip4_addr(local_ip_address)
 
     def handle_pppd_ip_down(self, parameters: typing.Mapping, environ: typing.Mapping) -> None:
-        local_ip_address = ipaddress.IPv4Address(parameters['local-IP-address'])
+        local_ip_address = ipaddress.IPv4Address(environ['IPLOCAL'])
         self.remove_ip4_addr(local_ip_address)
 
     def update_tayga(self):
@@ -148,12 +148,15 @@ class Dispatcher(BaseDispatcher):
 
         # add default route
         with pyroute2.IPRoute() as netlink_route:
-            idx = netlink_route.link_lookup(ifname=self.pppd_client.ifname)[0]
+            # the interface may be gone since it's created and removed dynamically by pppd
+            idx_list = netlink_route.link_lookup(ifname=self.pppd_client.ifname)
+            if len(idx_list) > 0:
+                idx = idx_list[0]
 
-            try:
-                netlink_route.route('add', dst='0.0.0.0/0', oif=idx)
-            except pyroute2.NetlinkError:
-                logging.error('dispatcher_centurylink could not add a new route')
+                try:
+                    netlink_route.route('add', dst='0.0.0.0/0', oif=idx)
+                except pyroute2.NetlinkError:
+                    logging.error('dispatcher_centurylink could not add a new route')
 
         # add WAN NAT translation
         nat_iptc_rule = iptc.Rule()
@@ -207,12 +210,15 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
 
         # remove default route
         with pyroute2.IPRoute() as netlink_route:
-            idx = netlink_route.link_lookup(ifname=self.pppd_client.ifname)[0]
+            # the interface may be gone since it's created and removed dynamically by pppd
+            idx_list = netlink_route.link_lookup(ifname=self.pppd_client.ifname)
+            if len(idx_list) > 0:
+                idx = idx_list[0]
 
-            try:
-                netlink_route.route('del', dst='0.0.0.0/0', oif=idx)
-            except pyroute2.NetlinkError:
-                logging.error('dispatcher_centurylink could not delete the route')
+                try:
+                    netlink_route.route('del', dst='0.0.0.0/0', oif=idx)
+                except pyroute2.NetlinkError:
+                    logging.error('dispatcher_centurylink could not delete the route')
 
         self.my_wan_ip4_address = None
         self.my_wan_ip6_prefix = None

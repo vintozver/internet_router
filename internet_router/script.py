@@ -57,30 +57,16 @@ def pppd():
     parameters = dict()
     if action in ('ip-pre-up', 'ip-up', 'ip-down'):
         # interface-name tty-device speed local-IP-address remote-IP-address ipparam
-        parameters['interface-name'] = sys.argv[3]
-        parameters['tty-device'] = sys.argv[4]
-        parameters['speed'] = sys.argv[5]
-        parameters['local-IP-address'] = sys.argv[6]
-        parameters['remote-IP-address'] = sys.argv[7]
-        parameters['ipparam'] = sys.argv[8]
+        pass
     elif action in ('auth-up', 'auth-down'):
         # interface-name peer-name user-name tty-device speed
-        parameters['interface-name'] = sys.argv[3]
-        parameters['peer-name'] = sys.argv[4]
-        parameters['user-name'] = sys.argv[5]
-        parameters['tty-device'] = sys.argv[6]
-        parameters['speed'] = sys.argv[7]
+        pass
     elif action in ('ipv6-up', 'ipv6-down'):
         # interface-name tty-device speed local-link-local-address remote-link-local-address ipparam
-        parameters['interface-name'] = sys.argv[3]
-        parameters['tty-device'] = sys.argv[4]
-        parameters['speed'] = sys.argv[5]
-        parameters['local-link-local-address'] = sys.argv[6]
-        parameters['remote-link-local-address'] = sys.argv[7]
-        parameters['ipparam'] = sys.argv[8]
+        pass
     else:
         raise RuntimeError('action value is unexpected', action)
-    command['parameters'] = parameters
+    command['parameters'] = parameters  # pppd script parameters are unreliable!
     command['environ'] = dict(os.environ.items())
 
     command_bytes = json.dumps(command).encode('utf-8')
