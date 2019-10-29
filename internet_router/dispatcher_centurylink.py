@@ -89,12 +89,12 @@ class Dispatcher(BaseDispatcher):
     def handle_pppd_command(self, action: str, parameters: typing.Mapping, environ: typing.Mapping) -> None:
         if environ['IFNAME'] == self.pppd_client.ifname:
             with self.lock:
-                if action == 'ip_up':
+                if action == 'ip-up':
                     self.handle_pppd_ip_up(parameters, environ)
                     self.update_lan_radvd()
                     self.update_tayga()
                     self.update_isc_bind()
-                elif action == 'ip_down':
+                elif action == 'ip-down':
                     self.handle_pppd_ip_down(parameters, environ)
                     self.update_lan_radvd()
                     self.update_tayga()
