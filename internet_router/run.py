@@ -11,7 +11,7 @@ from .dispatcher import Dispatcher
 from threading import Event
 
 import logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.INFO)
 
 
 def service_comcast(cfg: config.ComcastConfig, state_dir: str) -> Dispatcher:
