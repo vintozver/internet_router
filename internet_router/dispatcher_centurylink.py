@@ -9,6 +9,7 @@ from .pppd_client import PppdClient
 from .lan_radvd import LanRadvdManager
 from .tayga import TaygaManager
 from .isc_bind import IscBindManager
+from . import ip6rd
 
 
 class Dispatcher(BaseDispatcher):
@@ -144,6 +145,7 @@ class Dispatcher(BaseDispatcher):
             (int(self.my_wan_ip4_address) << (128 - 32 - self.ip6rd_subnet.prefixlen))
         ).supernet(128 - 32 - self.ip6rd_subnet.prefixlen)
         my_lan_ip6_prefix_gen = self.my_wan_ip6_prefix.subnets(128 - 64 - self.my_wan_ip6_prefix.prefixlen)
+        next(my_lan_ip6_prefix_gen)  # skip the 0th subnet which is effectively assigned to the WAN interface
         self.my_lan_ip6_prefix = next(my_lan_ip6_prefix_gen)
 
         # add default route
@@ -156,7 +158,7 @@ class Dispatcher(BaseDispatcher):
                 try:
                     netlink_route.route('add', dst='0.0.0.0/0', oif=idx)
                 except pyroute2.NetlinkError:
-                    logging.error('dispatcher_centurylink could not add a new route')
+                    logging.error('dispatcher_centurylink could not add the default route')
 
         # add WAN NAT translation
         nat_iptc_rule = iptc.Rule()
@@ -164,6 +166,40 @@ class Dispatcher(BaseDispatcher):
         nat_iptc_target = nat_iptc_rule.create_target('SNAT')
         nat_iptc_target.to_source = str(addr)
         iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
+
+        # add WAN unreachable route
+        with pyroute2.IPRoute() as netlink_route:
+            try:
+                netlink_route.route('add', dst=str(self.my_wan_ip6_prefix), type='unreachable')
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink could not add the unreachable route')
+
+        # add ip6rd tunnel
+        with pyroute2.IPRoute() as netlink_route:
+            # interface
+            try:
+                netlink_route.link('add', ifname='qwest6', kind='sit', sit_local=str(self.my_wan_ip4_address))
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink could not add the sit interface')
+            # interface ip6rd setup
+            ip6rd.setup('qwest6', self.ip6rd_subnet)
+            # lookup new interface
+            idx = netlink_route.link_lookup(ifname='qwest6')[0]
+            # address
+            try:
+                netlink_route.addr(
+                    'add',
+                    index=idx,
+                    address=str(self.my_wan_ip6_prefix[1]),
+                    prefixlen=self.my_wan_ip6_prefix.prefixlen,
+                )
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink: could not add the address to the sit interface')
+
+            try:
+                netlink_route.route('add', dst='::/0', gateway=str(self.ip6rd_gateway), oif=idx)
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink could not add the default route to the sit interface')
 
         # add LAN subnet
         with pyroute2.IPRoute() as netlink_route:
@@ -199,6 +235,22 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
                 )
             except pyroute2.NetlinkError:
                 logging.error('dispatcher_centurylink: could not delete the address')
+
+        # remove ip6rd tunnel
+        with pyroute2.IPRoute() as netlink_route:
+            idx = netlink_route.link_lookup(ifname='qwest6')[0]
+
+            try:
+                netlink_route.link('del', index=idx)
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink could not delete the sit interface')
+
+        # remove WAN unreachable route
+        with pyroute2.IPRoute() as netlink_route:
+            try:
+                netlink_route.route('del', dst=str(self.my_wan_ip6_prefix), type='unreachable')
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink could not delete the route')
 
         # remove WAN NAT translation
         iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
