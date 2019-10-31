@@ -195,7 +195,12 @@ class Dispatcher(BaseDispatcher):
                 )
             except pyroute2.NetlinkError:
                 logging.error('dispatcher_centurylink: could not add the address to the sit interface')
-
+            # activate
+            try:
+                netlink_route.link('set', index=idx, state='up')
+            except pyroute2.NetlinkError:
+                logging.error('dispatcher_centurylink: could not activate the sit interface')
+            # default route
             try:
                 netlink_route.route('add', dst='::/0', gateway=str(self.ip6rd_gateway), oif=idx)
             except pyroute2.NetlinkError:
