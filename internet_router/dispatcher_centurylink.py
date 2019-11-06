@@ -76,6 +76,8 @@ class Dispatcher(BaseDispatcher):
                 self.update_isc_bind()
 
     def shutdown(self):
+        super(Dispatcher, self).shutdown()
+
         with self.lock:
             if self.my_wan_ip4_address is not None:
                 self.remove_ip4_addr(self.my_wan_ip4_address)
@@ -91,19 +93,29 @@ class Dispatcher(BaseDispatcher):
 
     def handle_pppd_command(self, action: str, parameters: typing.Mapping, environ: typing.Mapping) -> None:
         if environ['IFNAME'] == self.pppd_client.ifname:
-            with self.lock:
-                if action == 'ip-up':
-                    self.handle_pppd_ip_up(parameters, environ)
-                    self.update_lan_radvd()
-                    self.update_tayga()
-                    self.update_isc_bind()
-                elif action == 'ip-down':
-                    self.handle_pppd_ip_down(parameters, environ)
-                    self.update_lan_radvd()
-                    self.update_tayga()
-                    self.update_isc_bind()
-                else:
-                    logging.info('Dispatcher received pppd command: %s' % action)
+            logging.debug('Dispatcher received pppd command, acquiring lock ...')
+            lock_res = self.lock_acquire()
+            if lock_res:
+                logging.debug('Dispatcher received pppd command, lock acquired')
+                try:
+                    if action == 'ip-up':
+                        self.handle_pppd_ip_up(parameters, environ)
+                        self.update_lan_radvd()
+                        self.update_tayga()
+                        self.update_isc_bind()
+                    elif action == 'ip-down':
+                        self.handle_pppd_ip_down(parameters, environ)
+                        self.update_lan_radvd()
+                        self.update_tayga()
+                        self.update_isc_bind()
+                    else:
+                        logging.info('Dispatcher received pppd command: %s' % action)
+                finally:
+                    logging.debug('Dispatcher received pppd command, lock released')
+                    self.lock_release()
+                return
+            else:
+                logging.debug('Dispatcher received pppd command, lock not acquired, shutdown in progress, exiting')
 
     def handle_pppd_ip_up(self, parameters: typing.Mapping, environ: typing.Mapping) -> None:
         local_ip_address = ipaddress.IPv4Address(environ['IPLOCAL'])

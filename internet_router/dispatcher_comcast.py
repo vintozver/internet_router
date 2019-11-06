@@ -62,6 +62,8 @@ class Dispatcher(BaseDispatcher):
                 self.update_isc_bind()
 
     def shutdown(self):
+        super(Dispatcher, self).shutdown()
+
         with self.lock:
             for addr in list(self.my_wan_ip4_addresses.keys()):
                 self.remove_ip4_addr(addr)
@@ -178,7 +180,7 @@ class Dispatcher(BaseDispatcher):
                         'add',
                         index=idx, address=str(subnet[1]), prefixlen=subnet.prefixlen,
                         IFA_CACHEINFO={
-                            'ifa_prefered': new_preferred_life,
+                            'ifa_preferred': new_preferred_life,
                             'ifa_valid': new_max_life,
                         }
                     )
