@@ -18,30 +18,16 @@ def _server_thread(server):
 class PppdClient(object):
     PEER_FORMAT = '/etc/ppp/peers/%s'
 
-    @classmethod
-    def retrieve_ifname_from_peer(cls, peer: str):
-        peer_regex = re.compile('^\\s*ifname\\s*(\\w+)\\s*$')
-        for peer_config_line in open(os.path.join('/etc/ppp/peers', peer), 'rt').readlines():
-            peer_config_line = peer_config_line.strip()
-            peer_match = peer_regex.match(peer_config_line)
-            if peer_match is not None:
-                return peer_match.group(1)
-
-        return None
-
     def __init__(
             self,
             state_dir: str,
             peer: str,
-            callback: typing.Callable[[str, typing.Mapping, typing.Mapping], None],
+            ifname: str,
+            callback: typing.Callable[[str, typing.Mapping, typing.Mapping], None]
     ):
         self.comm_file_path = os.path.join(state_dir, 'pppd_comm')
         self.script_file_path = os.path.join(state_dir, 'pppd_script')
         self.peer = peer
-
-        ifname = self.retrieve_ifname_from_peer(peer)
-        if ifname is None:
-            raise RuntimeError('pppd ifname option is mandatory for the peer', peer)
 
         self.ifname = ifname
         self.callback = callback
@@ -80,7 +66,7 @@ class PppdClient(object):
 
         logging.debug('pppd_client starting pppd process')
         self.process = subprocess.Popen(
-            ['pppd', 'call', self.peer, 'nodetach', 'debug'],
+            ['pppd', 'call', self.peer, 'ifname', self.ifname, 'nodetach', 'debug'],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

@@ -23,6 +23,8 @@ class Dispatcher(BaseDispatcher):
             ip6rd_gateway: ipaddress.IPv6Address,
             link_interface: str,
             ppp_peer: str,
+            wan_v4_interface: str,
+            wan_v6_interface: str,
             lan_interface: str,
             state_dir: str
     ):
@@ -32,7 +34,9 @@ class Dispatcher(BaseDispatcher):
             raise RuntimeError('The ip6rd cannot operate with the subnet "%s"' % str(ip6rd_subnet))
         self.ip6rd_subnet = ip6rd_subnet
         self.ip6rd_gateway = ip6rd_gateway
-        self.pppd_client = PppdClient(state_dir, ppp_peer, self.handle_pppd_command)
+        self.wan_v4_interface = wan_v4_interface
+        self.wan_v6_interface = wan_v6_interface
+        self.pppd_client = PppdClient(state_dir, ppp_peer, self.wan_v4_interface, self.handle_pppd_command)
         self.lan_radvd = LanRadvdManager(state_dir, lan_interface)
         self.tayga = TaygaManager(state_dir)
         self.isc_bind = IscBindManager(state_dir)
@@ -163,7 +167,7 @@ class Dispatcher(BaseDispatcher):
         # add default route
         with pyroute2.IPRoute() as netlink_route:
             # the interface may be gone since it's created and removed dynamically by pppd
-            idx_list = netlink_route.link_lookup(ifname=self.pppd_client.ifname)
+            idx_list = netlink_route.link_lookup(ifname=self.wan_v4_interface)
             if len(idx_list) > 0:
                 idx = idx_list[0]
 
@@ -174,7 +178,7 @@ class Dispatcher(BaseDispatcher):
 
         # add WAN NAT translation
         nat_iptc_rule = iptc.Rule()
-        nat_iptc_rule.out_interface = self.pppd_client.ifname
+        nat_iptc_rule.out_interface = self.wan_v4_interface
         nat_iptc_target = nat_iptc_rule.create_target('SNAT')
         nat_iptc_target.to_source = str(addr)
         iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
@@ -190,13 +194,13 @@ class Dispatcher(BaseDispatcher):
         with pyroute2.IPRoute() as netlink_route:
             # interface
             try:
-                netlink_route.link('add', ifname='qwest6', kind='sit', sit_local=str(self.my_wan_ip4_address))
+                netlink_route.link('add', ifname=self.wan_v6_interface, kind='sit', sit_local=str(self.my_wan_ip4_address))
             except pyroute2.NetlinkError:
                 logging.error('dispatcher_centurylink could not add the sit interface')
             # interface ip6rd setup
-            ip6rd.setup('qwest6', self.ip6rd_subnet)
+            ip6rd.setup(self.wan_v6_interface, self.ip6rd_subnet)
             # lookup new interface
-            idx = netlink_route.link_lookup(ifname='qwest6')[0]
+            idx = netlink_route.link_lookup(ifname=self.wan_v6_interface)[0]
             # address
             try:
                 netlink_route.addr(
@@ -255,7 +259,7 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
 
         # remove ip6rd tunnel
         with pyroute2.IPRoute() as netlink_route:
-            idx = netlink_route.link_lookup(ifname='qwest6')[0]
+            idx = netlink_route.link_lookup(ifname=self.wan_v6_interface)[0]
 
             try:
                 netlink_route.link('del', index=idx)
@@ -272,7 +276,7 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
         # remove WAN NAT translation
         iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
         for iptc_rule in iptc_nat_postrouting.rules:
-            if iptc_rule.out_interface == self.pppd_client.ifname \
+            if iptc_rule.out_interface == self.wan_v4_interface \
                     and iptc_rule.target.name == 'SNAT' and iptc_rule.target.to_source == str(addr):
                 iptc_nat_postrouting.delete_rule(iptc_rule)
                 break
@@ -280,7 +284,7 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
         # remove default route
         with pyroute2.IPRoute() as netlink_route:
             # the interface may be gone since it's created and removed dynamically by pppd
-            idx_list = netlink_route.link_lookup(ifname=self.pppd_client.ifname)
+            idx_list = netlink_route.link_lookup(ifname=self.wan_v4_interface)
             if len(idx_list) > 0:
                 idx = idx_list[0]
 

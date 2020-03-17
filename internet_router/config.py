@@ -10,9 +10,11 @@ class ComcastConfig(object):
 
 
 class CenturyLinkConfig(object):
-    def __init__(self, link_interface, ppp_peer, lan_interface):
+    def __init__(self, link_interface, ppp_peer, wan_v4_interface, wan_v6_interface, lan_interface):
         self.ip6rd_subnet = ipaddress.IPv6Network('2602::/24')
         self.ip6rd_gateway = ipaddress.IPv6Address('::205.171.2.64')
+        self.wan_v4_interface = wan_v4_interface
+        self.wan_v6_interface = wan_v6_interface
         self.link_interface = link_interface
         self.ppp_peer = ppp_peer
         self.lan_interface = lan_interface
@@ -55,6 +57,8 @@ class Config(object):
                 centurylink = CenturyLinkConfig(
                     cfg_centurylink['link_interface'],
                     cfg_centurylink['ppp_peer'],
+                    cfg_centurylink['wan_v4_interface'],
+                    cfg_centurylink['wan_v6_interface'],
                     cfg_centurylink['lan_interface'],
                 )
             else:

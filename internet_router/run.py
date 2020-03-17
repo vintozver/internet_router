@@ -31,6 +31,8 @@ def service_centurylink(cfg: config.CenturyLinkConfig, state_dir: str) -> Dispat
         link_interface=cfg.link_interface,
         ppp_peer=cfg.ppp_peer,
         lan_interface=cfg.lan_interface,
+        wan_v4_interface=cfg.wan_v4_interface,
+        wan_v6_interface=cfg.wan_v6_interface,
         state_dir=state_dir
     )
 
