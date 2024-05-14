@@ -76,6 +76,8 @@ view clients-ipv4 {
 
 view clients-ipv6 {
     match-clients {
+        localhost;
+        localnets;
         {% for client_ipv6 in clients_ipv6 %}
         {{ client_ipv6 }};
         {%- endfor %}
