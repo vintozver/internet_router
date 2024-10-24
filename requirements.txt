@@ -1,4 +1,0 @@
-setuptools
-pyroute2
-jinja2
-git+https://github.com/vintozver/python-iptables
