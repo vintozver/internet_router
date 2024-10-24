@@ -6,6 +6,7 @@ import logging
 import ipaddress
 from .dispatcher import Dispatcher as BaseDispatcher
 from .pppd_client import PppdClient
+from .lan_ext import LanExt
 from .lan_radvd import LanRadvdManager
 from .tayga import TaygaManager
 from .isc_bind import IscBindManager
@@ -48,6 +49,8 @@ class Dispatcher(BaseDispatcher):
         self.my_wan_ip4_address: typing.Optional[ipaddress.IPv4Address] = None
         self.my_wan_ip6_prefix: typing.Optional[ipaddress.IPv6Network] = None
         self.my_lan_ip6_prefix: typing.Optional[ipaddress.IPv6Network] = None
+
+        LanExt(None)
 
     def add_interface(self, index, name):
         logging.info('Adding interface to the topology %d:%s' % (index, name))
@@ -163,6 +166,7 @@ class Dispatcher(BaseDispatcher):
         my_lan_ip6_prefix_gen = self.my_wan_ip6_prefix.subnets(128 - 64 - self.my_wan_ip6_prefix.prefixlen)
         next(my_lan_ip6_prefix_gen)  # skip the 0th subnet which is effectively assigned to the WAN interface
         self.my_lan_ip6_prefix = next(my_lan_ip6_prefix_gen)
+        LanExt(self.my_lan_ip6_prefix)
 
         # add default route
         with pyroute2.IPRoute() as netlink_route:
@@ -296,3 +300,5 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
         self.my_wan_ip4_address = None
         self.my_wan_ip6_prefix = None
         self.my_lan_ip6_prefix = None
+        LanExt(None)
+

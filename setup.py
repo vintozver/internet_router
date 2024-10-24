@@ -9,7 +9,7 @@ setup(
     author='Vitaly Greck',
     author_email='vintozver@ya.ru',
     url='https://www.python.org/sigs/distutils-sig/',
-    packages=['internet_router'],
+    package_dir={'internet_router': 'src'},
     install_requires=[
         'pyroute2', 'jinja2', 'python-iptables'
     ],
