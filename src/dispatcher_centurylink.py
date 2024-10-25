@@ -39,6 +39,7 @@ class Dispatcher(BaseDispatcher):
         self.wan_v6_interface = wan_v6_interface
         self.pppd_client = PppdClient(state_dir, ppp_peer, self.wan_v4_interface, self.handle_pppd_command)
         self.lan_radvd = LanRadvdManager(state_dir, lan_interface)
+        self.lan_ext = LanExt(state_dir)
         self.tayga = TaygaManager(state_dir)
         self.isc_bind = IscBindManager(state_dir)
 
@@ -50,7 +51,7 @@ class Dispatcher(BaseDispatcher):
         self.my_wan_ip6_prefix: typing.Optional[ipaddress.IPv6Network] = None
         self.my_lan_ip6_prefix: typing.Optional[ipaddress.IPv6Network] = None
 
-        LanExt(None)
+        self.lan_ext.update(None)
 
     def add_interface(self, index, name):
         logging.info('Adding interface to the topology %d:%s' % (index, name))
@@ -166,7 +167,7 @@ class Dispatcher(BaseDispatcher):
         my_lan_ip6_prefix_gen = self.my_wan_ip6_prefix.subnets(128 - 64 - self.my_wan_ip6_prefix.prefixlen)
         next(my_lan_ip6_prefix_gen)  # skip the 0th subnet which is effectively assigned to the WAN interface
         self.my_lan_ip6_prefix = next(my_lan_ip6_prefix_gen)
-        LanExt(self.my_lan_ip6_prefix)
+        self.lan_ext.update(self.my_lan_ip6_prefix)
 
         # add default route
         with pyroute2.IPRoute() as netlink_route:
@@ -300,5 +301,5 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
         self.my_wan_ip4_address = None
         self.my_wan_ip6_prefix = None
         self.my_lan_ip6_prefix = None
-        LanExt(None)
+        self.lan_ext.update(None)
 
