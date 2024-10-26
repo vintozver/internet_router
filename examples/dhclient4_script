@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec /home/root/.local/bin/internet_router_dhclient4_script /home/root/internet_router_store

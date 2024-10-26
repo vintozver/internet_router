@@ -7,7 +7,6 @@ import ipaddress
 from .dispatcher import Dispatcher as BaseDispatcher
 from .pppd_client import PppdClient
 from .lan_ext import LanExt
-from .lan_radvd import LanRadvdManager
 from .tayga import TaygaManager
 from .isc_bind import IscBindManager
 from . import ip6rd
@@ -38,7 +37,6 @@ class Dispatcher(BaseDispatcher):
         self.wan_v4_interface = wan_v4_interface
         self.wan_v6_interface = wan_v6_interface
         self.pppd_client = PppdClient(state_dir, ppp_peer, self.wan_v4_interface, self.handle_pppd_command)
-        self.lan_radvd = LanRadvdManager(state_dir, lan_interface)
         self.lan_ext = LanExt(state_dir)
         self.tayga = TaygaManager(state_dir)
         self.isc_bind = IscBindManager(state_dir)
@@ -62,7 +60,6 @@ class Dispatcher(BaseDispatcher):
                 self.update_tayga()
                 self.update_isc_bind()
             elif name == self.lan_interface:
-                self.update_lan_radvd()
                 self.update_tayga()
                 self.update_isc_bind()
             else:
@@ -79,7 +76,6 @@ class Dispatcher(BaseDispatcher):
                 self.update_tayga()
                 self.update_isc_bind()
             elif name == self.lan_interface:
-                self.update_lan_radvd()
                 self.update_tayga()
                 self.update_isc_bind()
 
@@ -90,7 +86,6 @@ class Dispatcher(BaseDispatcher):
             if self.my_wan_ip4_address is not None:
                 self.remove_ip4_addr(self.my_wan_ip4_address)
             self.pppd_client.shutdown()
-            self.lan_radvd.shutdown()
             self.tayga.shutdown()
             self.isc_bind.shutdown()
 
@@ -108,12 +103,10 @@ class Dispatcher(BaseDispatcher):
                 try:
                     if action == 'ip-up':
                         self.handle_pppd_ip_up(parameters, environ)
-                        self.update_lan_radvd()
                         self.update_tayga()
                         self.update_isc_bind()
                     elif action == 'ip-down':
                         self.handle_pppd_ip_down(parameters, environ)
-                        self.update_lan_radvd()
                         self.update_tayga()
                         self.update_isc_bind()
                     else:
@@ -139,14 +132,6 @@ class Dispatcher(BaseDispatcher):
         else:
             # No /64 subnets. No NAT64 therefore
             self.tayga.update(None)
-
-    def update_lan_radvd(self):
-        lan_prefixes = dict()
-        rdnss = set()
-        if self.my_lan_ip6_prefix is not None:
-            lan_prefixes[self.my_lan_ip6_prefix] = {'preferred_life': 3600, 'max_life': 7200}
-            rdnss.add(self.my_lan_ip6_prefix[1])
-        self.lan_radvd.update(lan_prefixes, rdnss)
 
     def update_isc_bind(self):
         clients_ipv4 = list()

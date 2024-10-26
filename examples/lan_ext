@@ -1,0 +1,5 @@
+#!/bin/bash
+
+./lan_ext_render.py $@
+systemctl reload radvd
+echo "{\"command\": \"config-reload\"}" | nc -U /run/kea/kea6-ctrl-socket

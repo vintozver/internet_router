@@ -1,0 +1,5 @@
+#!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export PYTHONPATH="/home/root/.local/lib/python3.11/site-packages"
+export XTABLES_LIBDIR="/usr/lib/aarch64-linux-gnu/xtables"
+exec /home/root/.local/bin/internet_router_pppd_script /home/root/internet_router_store ip-up $@

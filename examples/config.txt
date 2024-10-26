@@ -1,0 +1,14 @@
+[general]
+mode=centurylink
+
+[comcast]
+wan_interface=comcast
+lan_interface=lan
+
+[centurylink]
+link_interface=centurylink
+ppp_peer=centurylink
+lan_interface=lan
+wan_v4_interface=qwest4
+wan_v6_interface=qwest6
+
