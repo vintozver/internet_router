@@ -1,6 +1,5 @@
 import typing
 import pyroute2
-import pyroute2.ipdb
 import iptc
 import logging
 import ipaddress
@@ -184,7 +183,7 @@ class Dispatcher(BaseDispatcher):
         with pyroute2.IPRoute() as netlink_route:
             # interface
             try:
-                netlink_route.link('add', ifname=self.wan_v6_interface, kind='sit', sit_local=str(self.my_wan_ip4_address))
+                netlink_route.link('add', ifname=self.wan_v6_interface, kind='sit', sit_local=str(self.my_wan_ip4_address), mtu=1472)
             except pyroute2.NetlinkError:
                 logging.error('dispatcher_centurylink could not add the sit interface')
             # interface ip6rd setup

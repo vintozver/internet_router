@@ -1,7 +1,6 @@
 import os
 import os.path
 import pyroute2
-import pyroute2.ipdb
 import subprocess
 import signal
 import jinja2

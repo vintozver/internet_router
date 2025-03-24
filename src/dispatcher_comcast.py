@@ -1,6 +1,5 @@
 import typing
 import pyroute2
-import pyroute2.ipdb
 import iptc
 import logging
 import ipaddress

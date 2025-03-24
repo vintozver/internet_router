@@ -4,7 +4,6 @@ import sys
 import os.path
 import errno
 import pyroute2
-import pyroute2.ipdb
 import signal
 from . import config
 from .dispatcher import Dispatcher
