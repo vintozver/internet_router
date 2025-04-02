@@ -45,7 +45,7 @@ view clients-ipv4 {
     // prime the server with knowledge of the root servers
     zone "." {
         type hint;
-        file "/etc/bind/db.root";
+        file "/usr/share/dns/root.hints";
     };
 
     // be authoritative for the localhost forward and reverse zones, and for
@@ -91,7 +91,7 @@ view clients-ipv6 {
 
     zone "." {
         type hint;
-        file "/etc/bind/db.root";
+        file "/usr/share/dns/root.hints";
     };
 
     dns64 64:ff9b::/96 {
