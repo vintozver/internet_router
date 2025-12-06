@@ -65,7 +65,7 @@ class WanDhcpClient6(object):
         logging.debug('wan_dhclient6 starting dhclient process')
         self.process = subprocess.Popen(
             [
-                'dhclient', '--no-pid', '-d', '-v', '-6', '-P', '-N',
+                'dhclient', '--no-pid', '-d', '-v', '-6', '-P',
                 '-sf', self.script_file_path,
                 self.wan_interface
             ],
