@@ -4,9 +4,10 @@ import pyroute2
 import subprocess
 import signal
 import jinja2
+import json
 import logging
 import ipaddress
-import iptc
+import nftables
 from . import std_stream_dup
 from threading import Thread, Event
 
@@ -47,6 +48,14 @@ data-dir {{ data_path }}
 
         self.global_ipv6_addr = None  # type: ipaddress.IPv6Address
 
+        self.nft = nftables.Nftables()
+        self.nft.set_json_output(True)
+        self.nft_action = nftables.Nftables()
+
+        self.nft = nftables.Nftables()
+        self.nft.set_json_output(True)
+        self.nft_action = nftables.Nftables()
+
     def start(self):
         if self.process is not None:
             return
@@ -58,19 +67,20 @@ data-dir {{ data_path }}
 
         logging.debug('tayga tunnel creating ...')
         tayga_tun = subprocess.Popen(
-            ['tayga', '--mktun', '--config', self.conf_file_path, '--pidfile', self.pid_file_path],
+            ['tayga', '-d', '--mktun', '--config', self.conf_file_path],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env=os.environ
         )
         tayga_out, tayga_err = tayga_tun.communicate()
         logging.info('tayga tunnel created, exited: %d, out: %s, err: %s' % (
-            tayga_tun.returncode, tayga_out.decode('utf-8'), tayga_err.decode('utf-8')
+            tayga_tun.returncode,
+            tayga_out.decode('utf-8') if tayga_out is not None else '<X>',
+            tayga_err.decode('utf-8') if tayga_err is not None else '<X>',
         ))
 
-        tayga_iptc_rule = iptc.Rule()
-        tayga_iptc_rule.src = '192.168.255.0/255.255.255.0'
-        tayga_iptc_rule.create_target('MASQUERADE')
-        iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(tayga_iptc_rule)
+        rc, out, err = self.nft_action.cmd('add rule nat POSTROUTING ip saddr 192.168.255.0/24 masquerade comment NAT64')
+        if rc != 0:
+            logging.error('tayga nft add error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
 
         try:
             with pyroute2.IPRoute() as netlink_route:
@@ -95,7 +105,7 @@ data-dir {{ data_path }}
 
         logging.debug('tayga starting ...')
         self.process = subprocess.Popen(
-            ['tayga', '--nodetach', '--config', self.conf_file_path, '--pidfile', self.pid_file_path],
+            ['tayga', '-d', '--config', self.conf_file_path, '--pidfile', self.pid_file_path],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env=os.environ
         )
@@ -127,22 +137,26 @@ data-dir {{ data_path }}
         self.process = None
         logging.info('tayga stopped')
 
-        iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
-        for iptc_rule in iptc_nat_postrouting.rules:
-            if iptc_rule.src == '192.168.255.0/255.255.255.0' and iptc_rule.target.name == 'MASQUERADE':
-                iptc_nat_postrouting.delete_rule(iptc_rule)
-                break
+        rc, out, err = self.nft.cmd("list table ip nat")
+        if rc == 0:
+            output_json = json.loads(out)["nftables"]
+            handles = list(map(lambda item_handle: item_handle["rule"]["handle"], filter(lambda item: ("rule" in item) and (item["rule"]["family"] == "ip" and item["rule"]["table"] == "nat" and item["rule"]["chain"] == "POSTROUTING" and item["rule"]["comment"] == "NAT64"), output_json)))
+            for handle in handles:
+                rc, out, err = self.nft_action.cmd("delete rule ip nat POSTROUTING handle %s" % handle)
+                if rc != 0:
+                    logging.error('tayga nft delete error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
+        else:
+            logging.error('tayga nft query error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
+
 
         logging.debug('tayga tunnel deleting ...')
-        tayga_tun = subprocess.Popen(
-            ['tayga', '--rmtun', '--config', self.conf_file_path, '--pidfile', self.pid_file_path],
-            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            env=os.environ
-        )
-        tayga_out, tayga_err = tayga_tun.communicate()
-        logging.info('tayga tunnel deleting, exited: %d, out: %s, err: %s' % (
-            tayga_tun.returncode, tayga_out.decode('utf-8'), tayga_err.decode('utf-8')
-        ))
+        with pyroute2.IPRoute() as netlink_route:
+            idx = netlink_route.link_lookup(ifname='nat64')[0]
+
+            try:
+                netlink_route.link('del', index=idx)
+            except pyroute2.NetlinkError:
+                logging.error('tayga tunnel deleting failure')
 
     def update(self, global_ipv6_addr: ipaddress.IPv6Address=None) -> None:
         self.global_ipv6_addr = global_ipv6_addr

@@ -11,7 +11,7 @@ setup(
     url='https://www.python.org/sigs/distutils-sig/',
     package_dir={'internet_router': 'src'},
     install_requires=[
-        'pyroute2', 'jinja2', 'python-iptables'
+        'pyroute2', 'jinja2', 'nftables'
     ],
     entry_points={
         'console_scripts': [

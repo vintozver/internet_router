@@ -47,31 +47,6 @@ view clients-ipv4 {
         type hint;
         file "/usr/share/dns/root.hints";
     };
-
-    // be authoritative for the localhost forward and reverse zones, and for
-    // broadcast zones as per RFC 1912
-
-    zone "localhost" {
-        type master;
-        file "/etc/bind/db.local";
-    };
-
-    zone "127.in-addr.arpa" {
-        type master;
-        file "/etc/bind/db.127";
-    };
-
-    zone "0.in-addr.arpa" {
-        type master;
-        file "/etc/bind/db.0";
-    };
-
-    zone "255.in-addr.arpa" {
-        type master;
-        file "/etc/bind/db.255";
-    };
-
-    include "/etc/bind/zones.rfc1918";
 };
 
 view clients-ipv6 {
@@ -139,7 +114,7 @@ view clients-ipv6 {
 
         logging.debug('ISC BIND starting ...')
         self.process = subprocess.Popen(
-            ['named', '-f', '-c', self.conf_file_path],
+            ['named', '-g', '-c', self.conf_file_path],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env=os.environ
         )

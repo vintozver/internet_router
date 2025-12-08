@@ -1,8 +1,9 @@
 import typing
 import pyroute2
-import iptc
 import logging
 import ipaddress
+import json
+import nftables
 from .dispatcher import Dispatcher as BaseDispatcher
 from .pppd_client import PppdClient
 from .lan_ext import LanExt
@@ -49,6 +50,16 @@ class Dispatcher(BaseDispatcher):
         self.my_lan_ip6_prefix: typing.Optional[ipaddress.IPv6Network] = None
 
         self.lan_ext.update(None)
+
+        self.nft = nftables.Nftables()
+        self.nft.set_json_output(True)
+        self.nft_action = nftables.Nftables()
+        rc, out, err = self.nft_action.cmd("add table nat")
+        if rc != 0:
+            logging.error('dispatcher_centurylink nft init error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
+        rc, out, err = self.nft_action.cmd("add chain nat POSTROUTING { type nat hook postrouting priority 100 ; }")
+        if rc != 0:
+            logging.error('dispatcher_centurylink nft init error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
 
     def add_interface(self, index, name):
         logging.info('Adding interface to the topology %d:%s' % (index, name))
@@ -166,11 +177,11 @@ class Dispatcher(BaseDispatcher):
                     logging.error('dispatcher_centurylink could not add the default route')
 
         # add WAN NAT translation
-        nat_iptc_rule = iptc.Rule()
-        nat_iptc_rule.out_interface = self.wan_v4_interface
-        nat_iptc_target = nat_iptc_rule.create_target('SNAT')
-        nat_iptc_target.to_source = str(addr)
-        iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING').append_rule(nat_iptc_rule)
+        rc, out, err = self.nft_action.cmd("add rule nat POSTROUTING oif %s snat to %s comment INTERNET-NAT" % (
+            self.wan_v4_interface, str(addr)
+        ))
+        if rc != 0:
+            logging.error('dispatcher_centurylink nft add error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
 
         # add WAN unreachable route
         with pyroute2.IPRoute() as netlink_route:
@@ -263,12 +274,17 @@ current WAN ip4 address does not match the requested "%s"' % str(addr))
                 logging.error('dispatcher_centurylink could not delete the route')
 
         # remove WAN NAT translation
-        iptc_nat_postrouting = iptc.Chain(iptc.Table(iptc.Table.NAT), 'POSTROUTING')
-        for iptc_rule in iptc_nat_postrouting.rules:
-            if iptc_rule.out_interface == self.wan_v4_interface \
-                    and iptc_rule.target.name == 'SNAT' and iptc_rule.target.to_source == str(addr):
-                iptc_nat_postrouting.delete_rule(iptc_rule)
-                break
+        rc, out, err = self.nft.cmd("list table ip nat")
+        if rc == 0:
+            logging.info("Retrieving list of rules success")
+            output_json = json.loads(out)["nftables"]
+            handles = list(map(lambda item_handle: item_handle["rule"]["handle"], filter(lambda item: ("rule" in item) and (item["rule"]["family"] == "ip" and item["rule"]["table"] == "nat" and item["rule"]["chain"] == "POSTROUTING" and item["rule"]["comment"] == "INTERNET-NAT"), output_json)))
+            for handle in handles:
+                rc, out, err = self.nft_action.cmd("delete rule ip nat POSTROUTING handle %s" % handle)
+                if rc != 0:
+                    logging.error('dispatcher_centurylink nft delete error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
+        else:
+            logging.error('dispatcher_centurylink nft query error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
 
         # remove default route
         with pyroute2.IPRoute() as netlink_route:

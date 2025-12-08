@@ -54,36 +54,38 @@ def service():
             if iface.get_attr('IFLA_OPERSTATE') == 'UP':
                 dispatcher.add_interface(iface['index'], iface.get_attr('IFLA_IFNAME'))
 
-    def ipdb_callback(ipdb, msg, action):
-        logging.debug('NETLINK event: %s, %s' % (repr(msg), action))
+    ndb = pyroute2.NDB()
 
-        if action == 'RTM_NEWLINK':
-            ifindex = msg['index']
-            try:
-                interface = ipdb.interfaces[ifindex]
-            except KeyError:
-                logging.warning('NETLINK warning. Interface does not exist, skipping')
-                return
-            ifname = interface['ifname']
-            if msg.get_attr('IFLA_OPERSTATE') == 'UP':
-                dispatcher.add_interface(ifindex, ifname)
-            else:
-                dispatcher.remove_interface(ifindex, ifname)
+    def ndb_newlink_callback(target, event):
+        logging.debug('NDB event: %s, %s' % (target, event))
+
+        ifindex = event['index']
+        try:
+            interface = ndb.interfaces[ifindex]
+        except KeyError:
+            logging.warning('NETLINK warning. Interface does not exist, skipping')
             return
-
-        if action == 'RTM_DELLINK':
-            ifindex = msg['index']
-            try:
-                interface = ipdb.interfaces[ifindex]
-            except KeyError:
-                logging.warning('NETLINK warning. Interface does not exist, skipping')
-                return
-            ifname = interface['ifname']
+        ifname = interface['ifname']
+        if msg.get_attr('IFLA_OPERSTATE') == 'UP':
+            dispatcher.add_interface(ifindex, ifname)
+        else:
             dispatcher.remove_interface(ifindex, ifname)
-            return
 
-    global_ipdb = pyroute2.IPDB()
-    ipdb_cb = global_ipdb.register_callback(ipdb_callback)
+    def ndb_dellink_callback(target, event):
+        logging.debug('NDB event: %s, %s' % (target, event))
+
+        ifindex = event['index']
+        try:
+            interface = ndb.interfaces[ifindex]
+        except KeyError:
+            logging.warning('NETLINK warning. Interface does not exist, skipping')
+            return
+        ifname = interface['ifname']
+        dispatcher.remove_interface(ifindex, ifname)
+        return
+
+    ndb.task_manager.register_handler(pyroute2.netlink.rtnl.RTM_NEWLINK, ndb_newlink_callback)
+    ndb.task_manager.register_handler(pyroute2.netlink.rtnl.RTM_DELLINK, ndb_dellink_callback)
 
     termination_event = Event()
 
@@ -105,8 +107,8 @@ def service():
             logging.info('Interrupt received. Shutting down ...')
             break
 
-    global_ipdb.unregister_callback(ipdb_cb)
-    global_ipdb.release()
+    ndb.task_manager.unregister_handler(pyroute2.netlink.rtnl.RTM_NEWLINK, ndb_newlink_callback)
+    ndb.task_manager.unregister_handler(pyroute2.netlink.rtnl.RTM_DELLINK, ndb_dellink_callback)
     dispatcher.shutdown()
 
 
