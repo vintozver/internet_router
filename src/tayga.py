@@ -9,6 +9,7 @@ import logging
 import ipaddress
 import nftables
 from . import std_stream_dup
+from .sysctl import SysctlController, SysctlControllerException
 from threading import Thread, Event
 
 
@@ -44,6 +45,8 @@ data-dir {{ data_path }}
         self.thread_stdout = None  # stdout polling thread
         self.thread_stderr = None  # stderr polling thread
 
+        self.sysctl_controller = SysctlController()
+
         self.shutdown_event = Event()
 
         self.global_ipv6_addr = None  # type: ipaddress.IPv6Address
@@ -77,6 +80,12 @@ data-dir {{ data_path }}
             tayga_out.decode('utf-8') if tayga_out is not None else '<X>',
             tayga_err.decode('utf-8') if tayga_err is not None else '<X>',
         ))
+
+        logging.debug('tayga setting forwarding sysctl')
+        try:
+            self.sysctl_controller.set_sysctl(['net', 'ipv4', 'conf', 'nat64', 'forwarding'], '1')
+        except SysctlControllerException:
+            pass
 
         rc, out, err = self.nft_action.cmd('add rule nat POSTROUTING ip saddr 192.168.255.0/24 masquerade comment NAT64')
         if rc != 0:
