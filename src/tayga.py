@@ -151,12 +151,20 @@ data-dir {{ data_path }}
 
         logging.debug('tayga tunnel deleting ...')
         with pyroute2.IPRoute() as netlink_route:
-            idx = netlink_route.link_lookup(ifname='nat64')[0]
-
+            links = netlink_route.link_lookup(ifname='nat64')
             try:
-                netlink_route.link('del', index=idx)
-            except pyroute2.NetlinkError:
-                logging.error('tayga tunnel deleting failure')
+                idx = links[0]
+            except IndexError:
+                idx = None
+
+            if idx is not None:
+                try:
+                    netlink_route.link('del', index=idx)
+                except pyroute2.NetlinkError:
+                    logging.error('tayga tunnel deleting failure')
+            else:
+                logging.warning('tayga tunnel deleting link not found')
+
 
     def update(self, global_ipv6_addr: ipaddress.IPv6Address=None) -> None:
         self.global_ipv6_addr = global_ipv6_addr
