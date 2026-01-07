@@ -20,8 +20,8 @@ class TaygaManager(object):
 tun-device {{ interface }}
 prefix 64:ff9b::/96
 ipv6-addr {{ global_ipv6_addr }}
-ipv4-addr 192.168.255.1
-dynamic-pool 192.168.255.0/24
+ipv4-addr 10.0.0.1
+dynamic-pool 10.0.0.0/8
 data-dir {{ data_path }}
     '''
 
@@ -87,7 +87,7 @@ data-dir {{ data_path }}
         except SysctlControllerException:
             pass
 
-        rc, out, err = self.nft_action.cmd('add rule nat POSTROUTING ip saddr 192.168.255.0/24 masquerade comment NAT64')
+        rc, out, err = self.nft_action.cmd('add rule nat POSTROUTING ip saddr 10.0.0.0/8 masquerade comment NAT64')
         if rc != 0:
             logging.error('tayga nft add error. rc:%s | stdout:%s | stderr:%s' % (rc, out, err))
 
@@ -101,7 +101,7 @@ data-dir {{ data_path }}
                     logging.error('tayga could not set the link. %s' % err.args)
                 # ipv4 route
                 try:
-                    netlink_route.route('add', dst='192.168.255.0/24', oif=idx)
+                    netlink_route.route('add', dst='10.0.0.0/8', oif=idx)
                 except pyroute2.NetlinkError as err:
                     logging.error('tayga could not set the route. %s' % err.args)
                 # ipv6 route
